@@ -12,7 +12,8 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core import audit
-from core.itemdb import CATEGORY_NAMES
+from core.i18n import t
+from core.itemdb import CATEGORY_NAMES, USETYPE_NAMES
 from . import theme
 
 P = theme.px
@@ -33,10 +34,9 @@ class ItemsTab(tk.Frame):
     # ---- 布局 ----
     def _build(self) -> None:
         outer, acts = theme.page(
-            self, "道具发放",
-            "全库检索道具，支持内部名 / 中文名 / 别名 / 分类。"
-            "发放前会自动虚拟推演堆叠与背包占用。")
-        theme.button(acts, "刷新", "ghost", self.search).pack(side="right")
+            self, t("items.title"), t("items.desc"))
+        theme.button(acts, t("common.refresh"), "ghost",
+                     self.search).pack(side="right")
 
         # 检索条
         bar = tk.Frame(outer, bg=theme.L0)
@@ -47,10 +47,11 @@ class ItemsTab(tk.Frame):
         box.entry.bind("<Return>", lambda e: self.search())
         self.search_var.trace_add("write", lambda *a: self._schedule_search())
 
-        tk.Label(bar, text="分类", font=theme.FONT_S, fg=theme.FG3,
-                 bg=theme.L0).pack(side="left", padx=(P(10), P(4)))
-        self.cat_var = tk.StringVar(value="全部")
-        cats = ["全部"] + [
+        tk.Label(bar, text=t("items.category"), font=theme.FONT_S,
+                 fg=theme.FG3, bg=theme.L0).pack(side="left",
+                                                padx=(P(10), P(4)))
+        self.cat_var = tk.StringVar(value=t("items.category.all"))
+        cats = [t("items.category.all")] + [
             f"{k} {v}" for k, v in
             sorted(CATEGORY_NAMES.items(), key=lambda x: int(x[0]))
         ]
@@ -60,7 +61,8 @@ class ItemsTab(tk.Frame):
         self.cat_box.bind("<<ComboboxSelected>>", lambda e: self.search())
 
         self.stackable_only = tk.BooleanVar(value=False)
-        ttk.Checkbutton(bar, text="只看可堆叠", variable=self.stackable_only,
+        ttk.Checkbutton(bar, text=t("items.stackable_only"),
+                        variable=self.stackable_only,
                         style="BarCheck.TCheckbutton",
                         command=self.search).pack(side="left", padx=(P(10), 0))
 
@@ -79,10 +81,13 @@ class ItemsTab(tk.Frame):
         left_card.grid(row=0, column=0, sticky="nsew", padx=(0, P(14)))
         self.table = theme.Table(
             left_card.body,
-            [("id", "ID", 58), ("name", "中文名", 168, "w", True),
-             ("raw", "内部名", 122), ("cat", "分类", 76),
-             ("grade", "品级", 46, "e"), ("flags", "特性", 100),
-             ("owned", "持有", 66)],
+            [("id", t("items.col.id"), 58),
+             ("name", t("items.col.name"), 168, "w", True),
+             ("raw", t("items.col.raw"), 122),
+             ("cat", t("items.col.category"), 76),
+             ("grade", t("items.col.grade"), 46, "e"),
+             ("flags", t("items.col.flags"), 100),
+             ("owned", t("items.col.owned"), 66)],
             height=10, on_select=self._on_select, on_double=self._give_selected,
         )
         self.table.pack(fill="both", expand=True, padx=1, pady=(0, 1))
@@ -94,7 +99,7 @@ class ItemsTab(tk.Frame):
         rcol.rowconfigure(1, weight=1)
 
         # 目标用户
-        target = theme.Card(rcol, "目标用户", padding=0)
+        target = theme.Card(rcol, t("items.target"), padding=0)
         target.grid(row=0, column=0, sticky="ew")
         tb = tk.Frame(target.body, bg=theme.L2)
         tb.pack(fill="x", padx=P(12), pady=P(11))
@@ -106,10 +111,11 @@ class ItemsTab(tk.Frame):
         ubox.configure(bg=theme.L3)
         ubox.pack(side="left", fill="x", expand=True)
         ubox.entry.bind("<Return>", lambda e: self._resolve_user())
-        theme.button(urow, "选中", "default", self._resolve_user).pack(
-            side="left", padx=(P(6), 0))
+        theme.button(urow, t("items.select"), "default",
+                     self._resolve_user).pack(side="left", padx=(P(6), 0))
 
-        self.user_label = tk.Label(tb, text="未选择", font=theme.FONT_S,
+        self.user_label = tk.Label(tb, text=t("items.no_target"),
+                                   font=theme.FONT_S,
                                    fg=theme.FG3, bg=theme.L2, anchor="w",
                                    justify="left", wraplength=P(300))
         self.user_label.pack(fill="x", pady=(P(7), 0))
@@ -121,8 +127,8 @@ class ItemsTab(tk.Frame):
         self.count_var = tk.StringVar(value="1")
         self.days_var = tk.StringVar(value="0")
         for i, (label, var, note) in enumerate((
-                ("数量", self.count_var, ""),
-                ("天数", self.days_var, "0 = 永久"))):
+                (t("items.quantity"), self.count_var, ""),
+                (t("items.days"), self.days_var, t("items.permanent_hint")))):
             cell = tk.Frame(nums, bg=theme.L2)
             cell.grid(row=0, column=i, sticky="ew",
                       padx=(0 if i == 0 else P(8), 0))
@@ -131,30 +137,31 @@ class ItemsTab(tk.Frame):
             ttk.Entry(cell, textvariable=var, width=8).pack(
                 fill="x", pady=(P(3), 0))
 
-        self.give_btn = theme.button(tb, "发放选中道具", "primary",
+        self.give_btn = theme.button(tb, t("items.give"), "primary",
                                      self._give_selected)
         self.give_btn.pack(fill="x", pady=(P(9), 0))
 
         # 道具详情
-        det = theme.Card(rcol, "道具详情", padding=0)
+        det = theme.Card(rcol, t("items.detail_card"), padding=0)
         det.grid(row=1, column=0, sticky="nsew", pady=(P(14), 0))
         db = tk.Frame(det.body, bg=theme.L2)
         db.pack(fill="both", expand=True, padx=P(12), pady=P(11))
 
-        self.detail = tk.Label(db, text="未选择道具", font=(theme.MONO, 8),
+        self.detail = tk.Label(db, text=t("items.no_item"),
+                               font=(theme.MONO, 8),
                                fg=theme.FG2, bg=theme.L2, justify="left",
                                anchor="nw")
         self.detail.pack(fill="both", expand=True, anchor="nw")
 
         alias_row = tk.Frame(db, bg=theme.L2)
         alias_row.pack(fill="x", pady=(P(8), 0))
-        tk.Label(alias_row, text="自定义中文名", font=theme.FONT_XS,
+        tk.Label(alias_row, text=t("items.alias"), font=theme.FONT_XS,
                  fg=theme.FG3, bg=theme.L2).pack(side="left")
         self.alias_var = tk.StringVar()
         ttk.Entry(alias_row, textvariable=self.alias_var, width=12).pack(
             side="left", fill="x", expand=True, padx=(P(6), P(6)))
-        theme.button(alias_row, "保存", "default", self._save_alias).pack(
-            side="right")
+        theme.button(alias_row, t("common.save"), "default",
+                     self._save_alias).pack(side="right")
 
     # ---- 检索 ----
     def _schedule_search(self) -> None:
@@ -165,7 +172,7 @@ class ItemsTab(tk.Frame):
     def search(self) -> None:
         self._pending = None
         cat = None
-        if self.cat_var.get() != "全部":
+        if self.cat_var.get() != t("items.category.all"):
             cat = int(self.cat_var.get().split(" ", 1)[0])
         needle = self.search_var.get().strip()
         self._results = self.app.items.search(
@@ -173,24 +180,25 @@ class ItemsTab(tk.Frame):
         )
         self._render()
         self.count_label.configure(
-            text=f"命中 {len(self._results)} / 全库 {len(self.app.items)}")
+            text=t("items.count", count=len(self._results),
+                   total=len(self.app.items)))
 
     def _render(self) -> None:
         rows, tags = [], []
         for item in self._results:
             flags = []
             if item.stackable:
-                flags.append("可堆叠")
+                flags.append(t("items.flag.stackable"))
             if item.can_extend:
-                flags.append("可续期")
+                flags.append(t("items.flag.extendable"))
             if item.is_costume:
-                flags.append("装扮")
+                flags.append(t("items.flag.costume"))
             if item.special_note:
-                flags.append("特殊")
+                flags.append(t("items.flag.special"))
             owned = item.id in self._owned
             rows.append((item.id, item.display_name, item.name,
                          item.category_name, item.grade, " ".join(flags),
-                         "● 已持有" if owned else ""))
+                         t("items.owned") if owned else ""))
             tags.append("owned" if owned else ("warn" if item.special_note else ""))
         self.table.set_rows(rows, tags)
 
@@ -201,15 +209,19 @@ class ItemsTab(tk.Frame):
         item = self.app.items.get(int(row[0]))
         if not item:
             return
+        yes_no = (lambda flag: t("common.yes") if flag else t("common.no"))
         lines = [
-            f"ID        {item.id}",
-            f"内部名    {item.name}",
-            f"中文名    {item.cn_name or '（未找到）'}",
-            f"类名      {item.class_name}",
-            f"分类      {item.category_name}（{item.category}）",
-            f"品级      {item.grade}　用途 {item.use_type}",
-            f"可堆叠    {'是' if item.stackable else '否'}"
-            f"　可续期 {'是' if item.can_extend else '否'}",
+            t("items.detail.id", id=item.id),
+            t("items.detail.raw", name=item.name),
+            t("items.detail.cn", name=item.cn_name or
+              t("items.detail.not_found")),
+            t("items.detail.class", name=item.class_name),
+            t("items.detail.category", name=item.category_name,
+              id=item.category),
+            t("items.detail.grade", grade=item.grade,
+              use_type=USETYPE_NAMES.get(str(item.use_type), item.use_type)),
+            t("items.detail.stackable", stackable=yes_no(item.stackable),
+              extendable=yes_no(item.can_extend)),
         ]
         if item.special_note:
             lines += ["", "⚠ " + item.special_note]
@@ -219,31 +231,34 @@ class ItemsTab(tk.Frame):
     def _save_alias(self) -> None:
         row = self.table.selected_row()
         if not row:
-            messagebox.showinfo("提示", "请先选择一个道具")
+            messagebox.showinfo(t("common.hint"), t("items.tip.choose"))
             return
         item = self.app.items.get(int(row[0]))
         if not item:
             return
         item.alias = self.alias_var.get().strip()
         self.app.items.save_aliases(self.app.aliases_path)
-        audit.log("设置道具别名", f"{item.id} → {item.alias}")
+        audit.log(t("audit.set_alias"), f"{item.id} → {item.alias}")
         self._render()
 
     # ---- 用户 ----
     def _resolve_user(self) -> None:
         user = self.app.db.find_user_by_name(self.user_var.get())
         if not user:
-            self.user_label.configure(text="未找到该用户", fg=theme.DANGER)
+            self.user_label.configure(text=t("items.user_not_found"),
+                                      fg=theme.DANGER)
             self._target_user = None
             self._owned = set()
             self._render()
             return
         self._target_user = user
         self._owned = self.app.db.owned_item_ids(user.user_id)
-        state = "在线" if user.online else "离线"
+        state = (t("common.online") if user.online
+                 else t("common.offline"))
         self.user_label.configure(
-            text=f"UID {user.user_id} {user.username}（{user.game_name}）{state}　"
-                 f"已持有 {len(self._owned)} 种",
+            text=t("items.user_state", uid=user.user_id,
+                   username=user.username, game_name=user.game_name,
+                   state=state, owned=len(self._owned)),
             fg=theme.FG2)
         self._render()
 
@@ -251,7 +266,7 @@ class ItemsTab(tk.Frame):
     def _give_selected(self) -> None:
         if not self._target_user:
             if not self.user_var.get().strip():
-                messagebox.showinfo("提示", "请先填写目标用户并点「选中」")
+                messagebox.showinfo(t("common.hint"), t("items.tip.fill_user"))
                 return
             self._resolve_user()
             if not self._target_user:
@@ -259,44 +274,50 @@ class ItemsTab(tk.Frame):
         selected = self.table.selected_row()
         item = self.app.items.get(int(selected[0])) if selected else None
         if not item:
-            messagebox.showinfo("提示", "请先选择一个道具")
+            messagebox.showinfo(t("common.hint"), t("items.tip.choose"))
             return
         try:
             count = int(self.count_var.get())
             days = int(self.days_var.get())
         except ValueError:
-            messagebox.showerror("输入错误", "数量 / 天数必须是整数")
+            messagebox.showerror(t("common.input_error"), t("items.invalid"))
             return
         if count <= 0:
-            messagebox.showerror("输入错误", "数量必须 ≥ 1")
+            messagebox.showerror(t("common.input_error"),
+                                 t("items.invalid_count"))
             return
 
         user = self._target_user
         if user.online:
             cmd = f"giveitem {user.user_id} {item.id} {count} {days}"
             if not messagebox.askyesno(
-                "用户在线",
-                f"{user.game_name} 当前在线，将通过 GM 指令发放：\n\n  {cmd}\n\n继续？",
+                t("items.online.title"),
+                t("items.online.body", name=user.game_name, cmd=cmd),
             ):
                 return
             ok, msg = self.app.send_command(cmd)
             if not ok:
-                messagebox.showerror("发送失败", msg)
+                messagebox.showerror(t("common.send_failed"), msg)
             else:
-                audit.log("在线发道具",
-                          f"UID {user.user_id} item {item.id} ×{count} {days}天")
-                messagebox.showinfo("已发送", "指令已下发，结果见「运行与日志」页")
+                audit.log(
+                    t("audit.online_give_item"),
+                    f"UID {user.user_id} item {item.id} ×{count} "
+                    f"{t('common.days_short', n=days)}")
+                messagebox.showinfo(t("users.online_points.title"),
+                                    t("users.online_points.body"))
             return
 
         self.app.backup_db()
         ok, msg = self.app.db.add_item(user.user_id, item, count, days)
-        audit.log("离线发道具",
-                  f"UID {user.user_id} item {item.id} ×{count} {days}天 → {msg}")
+        audit.log(
+            t("audit.offline_give_item"),
+            f"UID {user.user_id} item {item.id} ×{count} "
+            f"{t('common.days_short', n=days)} → {msg}")
         if ok:
             self._resolve_user()
-            messagebox.showinfo("发放结果", msg)
+            messagebox.showinfo(t("items.result"), msg)
         else:
-            messagebox.showerror("发放失败", msg)
+            messagebox.showerror(t("items.give_failed"), msg)
 
 
 __all__ = ["ItemsTab"]

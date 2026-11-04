@@ -1,6 +1,7 @@
 {
   "server_root": "..",
   "lang_file": "",
+  "language": "en",
   "auto_backup": true,
   "max_backups": 50,
   "auth_base_url": "http://127.0.0.1:38120",

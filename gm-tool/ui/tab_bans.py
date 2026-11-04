@@ -11,11 +11,17 @@ from tkinter import messagebox, ttk
 
 from core import audit
 from core.database import minutes_to_str
+from core.i18n import t
 from . import theme
 
 P = theme.px
 
-BAN_TYPES = {"显示理由（客户端可见）": 1, "静默封禁": 2}
+# Internal values stay stable; labels come from the locale catalog.
+BAN_TYPES = {"visible": 1, "silent": 2}
+BAN_TYPE_LABELS = {
+    "visible": "bans.type.visible",
+    "silent": "bans.type.silent",
+}
 
 
 class BansTab(ttk.Frame):
@@ -29,15 +35,14 @@ class BansTab(ttk.Frame):
 
     def _build(self) -> None:
         outer, acts = theme.page(
-            self, "封禁管理",
-            "账号 / IP / HWID 三条通道。「一键三封」会同时写入三者，"
-            "避免换号重进。在线用户封禁后需手动踢下线。")
-        theme.button(acts, "刷新", "ghost", self.refresh).pack(side="right")
+            self, t("bans.title"), t("bans.desc"))
+        theme.button(acts, t("common.refresh"), "ghost",
+                     self.refresh).pack(side="right")
 
         # ---- 新建封禁 ----
-        form = theme.Card(outer, "新建封禁", padding=0)
+        form = theme.Card(outer, t("bans.new"), padding=0)
         form.pack(fill="x", pady=(P(12), 0))
-        tk.Label(form.head, text="写库前自动备份", font=theme.FONT_S,
+        tk.Label(form.head, text=t("bans.auto_backup"), font=theme.FONT_S,
                  fg=theme.FG3, bg=theme.L2).pack(side="right", padx=(0, P(12)))
 
         fb = tk.Frame(form.body, bg=theme.L2)
@@ -57,48 +62,54 @@ class BansTab(ttk.Frame):
                      bg=theme.L2, anchor="w").pack(anchor="w")
             return c
 
-        c0 = cell(0, "目标账号")
+        c0 = cell(0, t("bans.target"))
         self.target_var = tk.StringVar()
         box = theme.search_box(c0, self.target_var, 14, theme.L2)
         box.pack(fill="x", pady=(P(3), 0))
         box.entry.bind("<Return>", lambda e: self._ban_account())
 
-        c1 = cell(1, "封禁方式")
-        self.type_var = tk.StringVar(value="显示理由（客户端可见）")
-        ttk.Combobox(c1, textvariable=self.type_var, values=list(BAN_TYPES),
+        c1 = cell(1, t("bans.method"))
+        self._type_values = list(BAN_TYPE_LABELS)
+        self._type_labels = [t(k) for k in BAN_TYPE_LABELS.values()]
+        self.type_var = tk.StringVar(value=self._type_labels[0])
+        ttk.Combobox(c1, textvariable=self.type_var, values=self._type_labels,
                      state="readonly").pack(fill="x", pady=(P(3), 0))
 
-        c2 = cell(2, "天数　0 = 永久")
+        c2 = cell(2, t("bans.days"))
         self.days_var = tk.StringVar(value="7")
         ttk.Spinbox(c2, from_=0, to=3650, textvariable=self.days_var).pack(
             fill="x", pady=(P(3), 0))
 
-        c3 = cell(3, "理由")
+        c3 = cell(3, t("bans.reason"))
         self.reason_var = tk.StringVar()
         ttk.Entry(c3, textvariable=self.reason_var).pack(fill="x", pady=(P(3), 0))
 
         brow = tk.Frame(fb, bg=theme.L2)
         brow.pack(fill="x", pady=(P(10), 0))
-        theme.button(brow, "一键三封（账号 + IP + HWID）", "danger-solid",
+        theme.button(brow, t("bans.triple"), "danger-solid",
                      self._ban_all).pack(side="left")
-        theme.button(brow, "仅封账号", "default", self._ban_account).pack(
+        theme.button(brow, t("bans.account_only"), "default", self._ban_account).pack(
             side="left", padx=(P(7), 0))
-        theme.button(brow, "解除封禁", "default", self._unban_all).pack(
+        theme.button(brow, t("bans.unban"), "default", self._unban_all).pack(
             side="left", padx=(P(7), 0))
-        tk.Label(brow, text="双击列表行可直接解封", font=theme.FONT_XS,
+        tk.Label(brow, text=t("bans.double_hint"), font=theme.FONT_XS,
                  fg=theme.FG3, bg=theme.L2).pack(side="right")
 
         # ---- 封禁列表 ----
-        tc = theme.Card(outer, "生效中的封禁", padding=0)
+        tc = theme.Card(outer, t("bans.active"), padding=0)
         tc.pack(fill="both", expand=True, pady=(P(12), 0))
         self._ban_count_label = tk.Label(tc.head, text="", font=theme.FONT_S,
                                          fg=theme.FG3, bg=theme.L2)
         self._ban_count_label.pack(side="right", padx=(0, P(12)))
         self.table = theme.Table(
             tc.body,
-            [("uid", "UID", 52), ("user", "账号", 110), ("name", "昵称", 100),
-             ("type", "类型", 92), ("reason", "理由", 260, "w", True),
-             ("term", "到期", 124), ("state", "状态", 74)],
+            [("uid", t("bans.col.uid"), 52),
+             ("user", t("bans.col.account"), 110),
+             ("name", t("bans.col.name"), 100),
+             ("type", t("bans.col.type"), 92),
+             ("reason", t("bans.col.reason"), 260, "w", True),
+             ("term", t("bans.col.expiry"), 124),
+             ("state", t("bans.col.state"), 74)],
             height=5, on_double=self._unban_selected,
         )
         self.table.pack(fill="both", expand=True, padx=1, pady=(0, 1))
@@ -110,13 +121,13 @@ class BansTab(ttk.Frame):
         lists.columnconfigure(1, weight=1)
         lists.rowconfigure(0, weight=1)
 
-        ipc = theme.Card(lists, "IP 黑名单", padding=0)
+        ipc = theme.Card(lists, t("bans.ip_blacklist"), padding=0)
         ipc.grid(row=0, column=0, sticky="nsew", padx=(0, P(14)))
         self._ip_count = tk.Label(ipc.head, text="", font=theme.FONT_S,
                                   fg=theme.FG3, bg=theme.L2)
         self._ip_count.pack(side="right", padx=(0, P(12)))
-        theme.button(ipc.head, "移除选中", "ghost", self._remove_ip).pack(
-            side="right", padx=(0, P(6)))
+        theme.button(ipc.head, t("bans.remove_selected"), "ghost",
+                     self._remove_ip).pack(side="right", padx=(0, P(6)))
         self.ip_list = tk.Listbox(
             ipc.body, font=(theme.MONO, 8), bg="#0c1118", fg=theme.FG2,
             selectbackground=theme.ACCENT_BG, selectforeground="#cfe0ff",
@@ -125,13 +136,13 @@ class BansTab(ttk.Frame):
         )
         self.ip_list.pack(fill="both", expand=True, padx=1, pady=(0, 1))
 
-        hc = theme.Card(lists, "HWID 黑名单", padding=0)
+        hc = theme.Card(lists, t("bans.hwid_blacklist"), padding=0)
         hc.grid(row=0, column=1, sticky="nsew")
         self._hwid_count = tk.Label(hc.head, text="", font=theme.FONT_S,
                                     fg=theme.FG3, bg=theme.L2)
         self._hwid_count.pack(side="right", padx=(0, P(12)))
-        theme.button(hc.head, "移除选中", "ghost", self._remove_hwid).pack(
-            side="right", padx=(0, P(6)))
+        theme.button(hc.head, t("bans.remove_selected"), "ghost",
+                     self._remove_hwid).pack(side="right", padx=(0, P(6)))
         self.hwid_list = tk.Listbox(
             hc.body, font=(theme.MONO, 8), bg="#0c1118", fg=theme.FG2,
             selectbackground=theme.ACCENT_BG, selectforeground="#cfe0ff",
@@ -151,10 +162,12 @@ class BansTab(ttk.Frame):
                 continue
             rows.append((
                 uid, u.username, u.game_name,
-                "显示理由" if u.ban_type == 1 else "静默",
+                t("bans.type.visible_short") if u.ban_type == 1
+                else t("bans.type.silent_short"),
                 u.ban_reason,
-                minutes_to_str(u.ban_term) if u.ban_term else "永久",
-                "生效中",
+                minutes_to_str(u.ban_term) if u.ban_term
+                else t("common.permanent"),
+                t("bans.state.active"),
             ))
             self._banned_users.append(uid)
         self.table.set_rows(rows)
@@ -170,16 +183,22 @@ class BansTab(ttk.Frame):
     def _resolve(self):
         name = self.target_var.get().strip()
         if not name:
-            messagebox.showinfo("提示", "请填写 UID / 账号 / 昵称")
+            messagebox.showinfo(t("common.hint"), t("bans.tip.target"))
             return None
         user = self.app.db.find_user_by_name(name)
         if not user:
-            messagebox.showerror("未找到", f"找不到用户：{name}")
+            messagebox.showerror(t("bans.not_found"),
+                                 t("bans.user_not_found", name=name))
         return user
 
     def _params(self, user) -> tuple[int, str, int]:
-        ban_type = BAN_TYPES.get(self.type_var.get(), 1)
-        reason = self.reason_var.get().strip() or "违反服务器规则"
+        try:
+            type_key = self._type_values[self._type_labels.index(
+                self.type_var.get())]
+        except (ValueError, IndexError):
+            type_key = "visible"
+        ban_type = BAN_TYPES.get(type_key, 1)
+        reason = self.reason_var.get().strip() or t("bans.default_reason")
         try:
             days = int(self.days_var.get())
         except ValueError:
@@ -196,10 +215,15 @@ class BansTab(ttk.Frame):
         ban_type, reason, days = self._params(user)
         self.app.backup_db()
         self.app.db.ban_user(user.user_id, ban_type, reason, days)
-        audit.log("封禁账号", f"UID {user.user_id} {days}天 理由={reason}")
+        audit.log(t("audit.ban_account"),
+                  f"UID {user.user_id} {t('common.days_short', n=days)} "
+                  f"{t('bans.reason')}={reason}")
         self._kick(user)
         self.refresh()
-        messagebox.showinfo("已封禁", f"{user.game_name} 账号已封 {days} 天")
+        messagebox.showinfo(
+            t("bans.banned.title"),
+            t("bans.banned.body", name=user.game_name, days=days),
+        )
 
     def _ban_all(self) -> None:
         user = self._resolve()
@@ -214,15 +238,17 @@ class BansTab(ttk.Frame):
         if hwid:
             self.app.db.ban_hwid(hwid)
         audit.log(
-            "一键三封",
-            f"UID {user.user_id} {days}天 IP={user.last_ip} HWID={hwid.hex() if hwid else '-'}",
+            t("audit.triple_ban"),
+            f"UID {user.user_id} {t('common.days_short', n=days)} "
+            f"IP={user.last_ip} HWID={hwid.hex() if hwid else '-'}",
         )
         self._kick(user)
         self.refresh()
         messagebox.showinfo(
-            "已三封",
-            f"{user.game_name}\n\n账号：{days} 天\nIP：{user.last_ip or '无'}\n"
-            f"HWID：{hwid.hex() if hwid else '无'}",
+            t("bans.triple.title"),
+            t("bans.triple.body", name=user.game_name, days=days,
+              ip=user.last_ip or t("common.none"),
+              hwid=hwid.hex() if hwid else t("common.none")),
         )
 
     def _unban_all(self) -> None:
@@ -231,8 +257,8 @@ class BansTab(ttk.Frame):
             return
         hwid = self.app.db.user_hwid(user.user_id)
         if not messagebox.askyesno(
-            "确认解封",
-            f"解封 {user.game_name}？\n\n账号、IP、HWID 三条通道都会解除。",
+            t("bans.unban_confirm.title"),
+            t("bans.unban_confirm.body", name=user.game_name),
         ):
             return
         self.app.backup_db()
@@ -241,9 +267,10 @@ class BansTab(ttk.Frame):
             self.app.db.unban_ip(user.last_ip)
         if hwid:
             self.app.db.unban_hwid(hwid)
-        audit.log("解除封禁", f"UID {user.user_id}")
+        audit.log(t("audit.unban"), f"UID {user.user_id}")
         self.refresh()
-        messagebox.showinfo("已解封", f"{user.game_name} 已解封")
+        messagebox.showinfo(t("bans.unbanned.title"),
+                            t("bans.unbanned.body", name=user.game_name))
 
     def _unban_selected(self) -> None:
         row = self.table.selected_row()
@@ -258,17 +285,10 @@ class BansTab(ttk.Frame):
             return
         if self.app.server.running:
             messagebox.showwarning(
-                "需要手动踢下线",
-                "该用户当前在线。账号已封，但服务端内存中的会话仍然存在。\n\n"
-                "控制台命令没有单用户踢人，请让该用户重新登录，"
-                "或在服务端 GUI 的 Session 页踢出。",
-            )
+                t("bans.kick.title"), t("bans.kick.body"))
         else:
             messagebox.showwarning(
-                "用户在线",
-                "该用户显示为在线，但服务端不在本工具的管理下，"
-                "封禁会在其下次登录时生效。",
-            )
+                t("bans.online.title"), t("bans.online.body"))
 
     # ---- IP / HWID ----
     def _remove_ip(self) -> None:
@@ -278,7 +298,7 @@ class BansTab(ttk.Frame):
         ip = self.ip_list.get(sel[0])
         self.app.backup_db()
         self.app.db.unban_ip(ip)
-        audit.log("移除 IP 黑名单", ip)
+        audit.log(t("audit.remove_ip_ban"), ip)
         self.refresh()
 
     def _remove_hwid(self) -> None:
@@ -288,7 +308,7 @@ class BansTab(ttk.Frame):
         hexval = self.hwid_list.get(sel[0])
         self.app.backup_db()
         self.app.db.unban_hwid(bytes.fromhex(hexval))
-        audit.log("移除 HWID 黑名单", hexval)
+        audit.log(t("audit.remove_hwid_ban"), hexval)
         self.refresh()
 
 

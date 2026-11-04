@@ -1,0 +1,3 @@
+# Build-time only: packages the GM tool into dist/CSNZ.GMTool.exe.
+# Runtime of the exe uses the Python standard library only.
+pyinstaller>=6.0

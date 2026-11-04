@@ -19,6 +19,7 @@ Python 层任何未捕获异常都可能让进程退出。没有守护时，
 """
 from __future__ import annotations
 
+import shutil
 import socket
 import subprocess
 import sys
@@ -27,6 +28,8 @@ import time
 from collections import deque
 from pathlib import Path
 from typing import Callable
+
+from .i18n import t
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -99,11 +102,42 @@ class AuthServerProcess:
         self.host = host or "127.0.0.1"
         self.port = int(port)
 
+    def _built_exe(self) -> Path | None:
+        """同目录下可选的 CSNZ.AuthServer.exe（打包版鉴权服务）。"""
+        if self.script is None:
+            return None
+        path = self.script.with_name("CSNZ.AuthServer.exe")
+        return path if path.exists() else None
+
+    def _launch_command(self, built: Path | None) -> list[str] | None:
+        """返回启动鉴权服务的命令；找不到可用解释器时返回 None。
+
+        优先级：
+        1. 源码运行且 server.py 存在 —— 用当前解释器，方便开发调试；
+        2. 同目录有 CSNZ.AuthServer.exe —— 直接运行，不依赖目标机 Python；
+        3. 其余情况退回系统 Python 执行 server.py。
+        exe 本身不能当解释器来执行 server.py，所以顺序不能反。
+        """
+        assert self.script is not None
+        if not getattr(sys, "frozen", False) and self.script.exists():
+            return [sys.executable, self.script.name]
+        if built is not None:
+            return [str(built)]
+        python = shutil.which("pythonw") or shutil.which("python")
+        if python is None:
+            return None
+        return [python, self.script.name]
+
     def start(self, wait_ready: float = 12.0) -> tuple[bool, str]:
         if self.running:
-            return False, "鉴权服务已在运行"
-        if not self.script or not self.script.exists():
-            return False, f"找不到鉴权服务脚本：{self.script}"
+            return False, t("auth.start.already_running")
+        built = self._built_exe()
+        if not self.script or (not self.script.exists()
+                               and built is None):
+            return False, t("auth.start.script_missing", script=self.script)
+        command = self._launch_command(built)
+        if command is None:
+            return False, t("auth.start.no_python")
 
         self._stopping = False
 
@@ -111,11 +145,11 @@ class AuthServerProcess:
         # 此时没有本进程句柄，记下开始时间让守护算存活时长时有依据。
         if port_open(self.host, self.port):
             self._started_at = time.time()
-            return True, f"端口 {self.port} 已有服务在监听，直接复用"
+            return True, t("auth.start.port_reused", port=self.port)
 
         try:
             self.proc = subprocess.Popen(
-                [sys.executable, str(self.script.name)],
+                command,
                 cwd=str(self.script.parent),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -123,7 +157,7 @@ class AuthServerProcess:
                 bufsize=1,
             )
         except OSError as e:
-            return False, f"启动失败：{e}"
+            return False, t("auth.start.failed", error=e)
 
         # 记录启动时刻：守护用它计算存活时长，判断是偶发崩溃还是崩溃循环
         self._started_at = time.time()
@@ -135,11 +169,12 @@ class AuthServerProcess:
         deadline = time.time() + wait_ready
         while time.time() < deadline:
             if self.proc.poll() is not None:
-                return False, "鉴权服务启动后立即退出，请查看日志"
+                return False, t("auth.start.immediate_exit")
             if port_open(self.host, self.port):
-                return True, f"已启动，PID {self.proc.pid}"
+                return True, t("auth.start.ok", pid=self.proc.pid)
             time.sleep(0.25)
-        return False, f"启动超时（{wait_ready:.0f} 秒内端口 {self.port} 未就绪）"
+        return False, t("auth.start.timeout", port=self.port,
+                        seconds=f"{wait_ready:.0f}")
 
     def _read_loop(self) -> None:
         assert self.proc and self.proc.stdout
@@ -147,7 +182,7 @@ class AuthServerProcess:
             line = raw.decode("utf-8", "replace").rstrip()
             if line:
                 self._emit(line)
-        self._emit("--- 鉴权服务已退出 ---")
+        self._emit(t("auth.exited"))
         # 退出后交给守护判断；手动停止时 _stopping 已置位，不会拉起
         self._maybe_restart()
 
@@ -174,26 +209,27 @@ class AuthServerProcess:
         否则一个起来就崩的进程会被无限重拉。
         """
         if self._stopping or self.script is None:
-            self._emit("--- 已手动停止，守护不重启 ---")
+            self._emit(t("auth.guard.manual_stop"))
             return
 
         uptime = (time.time() - self._started_at) if self._started_at else 0.0
         if uptime >= self.healthy_uptime:
             self._restart_attempts = 0
         else:
-            self._emit(f"--- 本次仅存活 {uptime:.0f} 秒，视为异常退出 ---")
+            self._emit(t("auth.guard.short_life", seconds=f"{uptime:.0f}"))
 
         if self._restart_attempts >= self.max_restart_attempts:
-            self._emit(
-                f"--- 连续 {self._restart_attempts} 次异常退出，已停止守护，"
-                f"请检查鉴权服务日志 ---"
-            )
+            self._emit(t("auth.guard.give_up", attempts=self._restart_attempts))
             return
 
         self._restart_attempts += 1
         self._emit(
-            f"--- 鉴权服务已掉线，{self.restart_delay:.0f} 秒后自动重启"
-            f"（第 {self._restart_attempts}/{self.max_restart_attempts} 次）---"
+            t(
+                "auth.guard.restarting",
+                delay=f"{self.restart_delay:.0f}",
+                attempt=self._restart_attempts,
+                max=self.max_restart_attempts,
+            )
         )
         self._restart_thread = threading.Thread(
             target=self._restart_after_delay, daemon=True)
@@ -205,15 +241,15 @@ class AuthServerProcess:
             return
         ok, msg = self.start()
         if ok:
-            self._emit(f"--- 守护：鉴权服务已重新启动（PID {self.pid}）---")
+            self._emit(t("auth.guard.restarted", pid=self.pid))
         else:
-            self._emit(f"--- 守护：鉴权重启失败（{msg}），稍后重试 ---")
+            self._emit(t("auth.guard.restart_failed", error=msg))
             if not self._stopping:
                 self._maybe_restart()
 
     def stop(self, timeout: float = 8.0) -> tuple[bool, str]:
         if not self.running:
-            return False, "鉴权服务未运行"
+            return False, t("auth.stop.not_running")
         # 用户主动停止：必须先置位，否则读循环看到退出会触发自动重启
         self._stopping = True
         assert self.proc
@@ -225,11 +261,11 @@ class AuthServerProcess:
             try:
                 self.proc.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                return False, "无法结束进程"
-            return True, "已强制结束"
+                return False, t("auth.stop.cannot_kill")
+            return True, t("auth.stop.force")
         except OSError as e:
-            return False, f"结束失败：{e}"
-        return True, "已停止"
+            return False, t("auth.stop.failed", error=e)
+        return True, t("auth.stop.ok")
 
 
 __all__ = ["AuthServerProcess", "port_open"]

@@ -10,6 +10,7 @@ import tkinter as tk
 from datetime import datetime
 
 from core import audit
+from core.i18n import t
 from . import theme
 
 P = theme.px
@@ -53,25 +54,24 @@ class OverviewTab(tk.Frame):
         head.pack(fill="x")
         left = tk.Frame(head, bg=theme.L0)
         left.pack(side="left", fill="x", expand=True)
-        tk.Label(left, text="总览", font=theme.FONT_TITLE, fg=theme.FG,
+        tk.Label(left, text=t("overview.title"), font=theme.FONT_TITLE, fg=theme.FG,
                  bg=theme.L0, anchor="w").pack(anchor="w")
-        tk.Label(left, text="服务端运行状态、数据源健康度与最近操作。"
-                            "所有写操作都会先自动备份数据库。",
+        tk.Label(left, text=t("overview.desc"),
                  font=theme.FONT_S, fg=theme.FG3, bg=theme.L0,
                  anchor="w").pack(anchor="w", pady=(P(3), P(0)))
         acts = tk.Frame(head, bg=theme.L0)
         acts.pack(side="right", anchor="n")
-        theme.button(acts, "刷新", "ghost", self.refresh).pack(side="right")
+        theme.button(acts, t("common.refresh"), "ghost", self.refresh).pack(side="right")
 
         # KPI
         kpis = tk.Frame(outer, bg=theme.L0)
         kpis.pack(fill="x", pady=(P(14), P(0)))
         for i in range(4):
             kpis.columnconfigure(i, weight=1, uniform="kpi")
-        self.kpi_online = self._kpi(kpis, 0, "users", "当前在线", "0", "/ -")
-        self.kpi_users = self._kpi(kpis, 1, "db", "注册账号", "0", "")
-        self.kpi_bans = self._kpi(kpis, 2, "shield", "封禁生效", "0", "")
-        self.kpi_shop = self._kpi(kpis, 3, "cart", "商城在售", "0", "")
+        self.kpi_online = self._kpi(kpis, 0, "users", t("overview.kpi.online"), "0", "/ -")
+        self.kpi_users = self._kpi(kpis, 1, "db", t("overview.kpi.users"), "0", "")
+        self.kpi_bans = self._kpi(kpis, 2, "shield", t("overview.kpi.bans"), "0", "")
+        self.kpi_shop = self._kpi(kpis, 3, "cart", t("overview.kpi.shop"), "0", "")
 
         # 主体两栏
         body = tk.Frame(outer, bg=theme.L0)
@@ -91,7 +91,7 @@ class OverviewTab(tk.Frame):
         rcol.rowconfigure(1, weight=1)
 
         # --- 服务端 ---
-        srv = theme.Card(lcol, "服务端", padding=0)
+        srv = theme.Card(lcol, t("overview.server.card"), padding=0)
         srv.grid(row=0, column=0, sticky="ew")
         self.srv_pill_holder = tk.Frame(srv.head, bg=theme.L2)
         self.srv_pill_holder.pack(side="right", padx=(P(0), P(12)))
@@ -103,31 +103,34 @@ class OverviewTab(tk.Frame):
         sb.pack(fill="x", padx=P(14), pady=P(12))
         sb.columnconfigure(0, weight=1, uniform="srv")
         sb.columnconfigure(1, weight=1, uniform="srv")
-        self._kv_grid(sb, 0, [("进程 PID", "-"), ("监听端口", "-"),
-                              ("守护", "-")])
-        self._kv_grid(sb, 1, [("客户端地址", "-"), ("数据库", "-"),
-                              ("最近备份", "-")])
+        self._kv_grid(sb, 0, [(t("overview.kv.pid"), "-"), (t("overview.kv.port"), "-"),
+                              (t("overview.kv.guard"), "-")])
+        self._kv_grid(sb, 1, [(t("overview.kv.client"), "-"), (t("overview.kv.db"), "-"),
+                              (t("overview.kv.backup"), "-")])
 
         # --- 最近操作 ---
-        log_card = theme.Card(lcol, "最近操作", padding=0)
+        log_card = theme.Card(lcol, t("overview.audit.card"), padding=0)
         log_card.grid(row=1, column=0, sticky="nsew", pady=(P(14), P(0)))
-        tk.Label(log_card.head, text="审计日志", font=theme.FONT_S,
+        tk.Label(log_card.head, text=t("overview.audit.sub"), font=theme.FONT_S,
                  fg=theme.FG3, bg=theme.L2).pack(side="left")
         self.log_table = theme.Table(
-            log_card.body, [("ts", "时间", 74), ("act", "操作", 104),
-                       ("detail", "详情", 300, "w", True)],
+            log_card.body, [("ts", t("overview.audit.time"), 74),
+                            ("act", t("overview.audit.action"), 104),
+                            ("detail", t("overview.audit.detail"), 300, "w", True)],
             height=5, zebra=False,
         )
         self.log_table.pack(fill="both", expand=True, padx=P(1), pady=(P(0), P(1)))
 
         # --- 数据源 ---
-        src = theme.Card(rcol, "数据源", padding=0)
+        src = theme.Card(rcol, t("overview.sources"), padding=0)
         src.grid(row=0, column=0, sticky="ew")
         sbody = tk.Frame(src.body, bg=theme.L2)
         sbody.pack(fill="x", padx=P(13), pady=P(11))
         self.src_rows = {}
-        for key, name in (("items", "道具表 Item.csv"), ("shop", "商城 Shop.json"),
-                          ("db", "数据库 SQLite"), ("auth", "鉴权服务")):
+        for key, name in (("items", t("overview.source.items")),
+                          ("shop", t("overview.source.shop")),
+                          ("db", t("overview.source.db")),
+                          ("auth", t("overview.source.auth"))):
             row = tk.Frame(sbody, bg=theme.L2)
             row.pack(fill="x", pady=P(3))
             tk.Label(row, text="●", font=(theme.FAMILY, 6), fg=theme.OK,
@@ -140,7 +143,7 @@ class OverviewTab(tk.Frame):
             self.src_rows[key] = val
 
         # --- 待处理 ---
-        todo = theme.Card(rcol, "待处理", padding=0)
+        todo = theme.Card(rcol, t("overview.todo"), padding=0)
         todo.grid(row=1, column=0, sticky="nsew", pady=(P(14), P(0)))
         self.todo_count = tk.Label(todo.head, text="", font=theme.FONT_S,
                                    fg=theme.FG3, bg=theme.L2)
@@ -197,7 +200,7 @@ class OverviewTab(tk.Frame):
         max_p = app.server_config.get("MaxPlayers", 0) or "-"
         self.kpi_online["val"].configure(text=f"{online}")
         self.kpi_online["suffix"].configure(text=f"/ {max_p}")
-        self.kpi_online["sub"].configure(text="UserSession 实时统计")
+        self.kpi_online["sub"].configure(text=t("overview.online.sub"))
 
         try:
             users = app.db.list_users()
@@ -208,26 +211,32 @@ class OverviewTab(tk.Frame):
         except Exception:
             total, banned, today = 0, 0, 0
         self.kpi_users["val"].configure(text=f"{total:,}")
-        self.kpi_users["sub"].configure(text=f"今日登录 {today}")
+        self.kpi_users["sub"].configure(
+            text=t("overview.users.sub", count=today))
 
         self.kpi_bans["val"].configure(text=f"{banned}")
-        self.kpi_bans["sub"].configure(text="账号 · IP · HWID 三通道")
+        self.kpi_bans["sub"].configure(text=t("overview.bans.sub"))
 
         products = len(app.shop.products)
         subs = sum(len(p.subs) for p in app.shop.products.values())
         self.kpi_shop["val"].configure(text=f"{products}")
-        self.kpi_shop["suffix"].configure(text=f"件 / {subs} 档")
+        self.kpi_shop["suffix"].configure(
+            text=t("overview.shop.suffix", subs=subs))
         self.kpi_shop["sub"].configure(
-            text=f"推荐 {len(app.shop.recommended)} 页 · 热销 {len(app.shop.popular)} 件")
+            text=t("overview.shop.sub", recommended=len(app.shop.recommended),
+                   popular=len(app.shop.popular)))
 
         # 服务端卡
         for w in self.srv_pill_holder.winfo_children():
             w.destroy()
         if app.server.running:
-            theme.pill(self.srv_pill_holder, "运行中", "ok").pack()
-            self.srv_uptime.configure(text=f"uptime {app.uptime_text}")
+            theme.pill(self.srv_pill_holder, t("overview.server.running"),
+                       "ok").pack()
+            self.srv_uptime.configure(
+                text=t("overview.server.uptime", uptime=app.uptime_text))
         else:
-            theme.pill(self.srv_pill_holder, "未运行", "danger").pack()
+            theme.pill(self.srv_pill_holder, t("overview.server.not_running"),
+                       "danger").pack()
             self.srv_uptime.configure(text="")
 
         cfg = app.server_config
@@ -240,13 +249,14 @@ class OverviewTab(tk.Frame):
         except Exception:
             pass
         port = cfg.get("Port", "-")
-        guard = "开启 · 掉线自启" if app.server.guarding else "未开启"
-        self._fill_kv(0, [("进程 PID", str(app.server.pid or "-")),
-                          ("监听端口", f"{port}  TCP/UDP"),
-                          ("守护", guard)])
-        self._fill_kv(1, [("客户端地址", ini_ip),
-                          ("数据库", f"schema v{app._schema_version()}"),
-                          ("最近备份", app._last_backup)])
+        guard = t("overview.guard.on") if app.server.guarding else t("overview.guard.off")
+        self._fill_kv(0, [(t("overview.kv.pid"), str(app.server.pid or "-")),
+                          (t("overview.kv.port"), f"{port}  TCP/UDP"),
+                          (t("overview.kv.guard"), guard)])
+        self._fill_kv(1, [(t("overview.kv.client"), ini_ip),
+                          (t("overview.kv.db"),
+                           t("overview.schema", version=app._schema_version())),
+                          (t("overview.kv.backup"), app._last_backup)])
 
         # 最近操作
         rows = []
@@ -261,13 +271,16 @@ class OverviewTab(tk.Frame):
         self.log_table.set_rows(rows)
 
         # 数据源
-        self.src_rows["items"].configure(text=f"{len(app.items):,} 条")
-        self.src_rows["shop"].configure(text=f"{products} 商品")
+        self.src_rows["items"].configure(
+            text=t("overview.items_count", count=f"{len(app.items):,}"))
+        self.src_rows["shop"].configure(
+            text=t("overview.shop_count", count=products))
         self.src_rows["db"].configure(
             text=f"v{app._schema_version()}")
         auth_ok = bool(str(app.cfg.get("auth_base_url", "")).startswith("http"))
         self.src_rows["auth"].configure(
-            text="已配置" if auth_ok else "未配置",
+            text=t("overview.source.configured") if auth_ok
+            else t("overview.source.not_configured"),
             fg=theme.OK if auth_ok else theme.FG3)
 
         # 待处理
@@ -275,21 +288,22 @@ class OverviewTab(tk.Frame):
             w.destroy()
         items = []
         if banned:
-            items.append(("warn", f"{banned} 个封禁生效中",
-                          "双击封禁列表可解封；静默封不会告知客户端原因。"))
+            items.append(("warn", t("overview.todo.banned.title", count=banned),
+                          t("overview.todo.banned.text")))
         shop_tab = getattr(app, "tab_shop", None)
         if shop_tab is not None and getattr(shop_tab, "_pending_reload", False):
-            items.append(("info", "商城改动未重载",
-                          "保存 Shop.json 后必须 dbreload 才会同步到客户端。"))
+            items.append(("info", t("overview.todo.shop.title"),
+                          t("overview.todo.shop.text")))
         if not app.server.running:
-            items.append(("danger", "服务端未运行",
-                          "顶栏可启动；启动后守护会自动接管掉线重启。"))
+            items.append(("danger", t("overview.todo.server.title"),
+                          t("overview.todo.server.text")))
         if not items:
-            items.append(("info", "没有待处理事项",
-                          "服务端运行正常，配置与商城均无未生效改动。"))
+            items.append(("info", t("overview.todo.none.title"),
+                          t("overview.todo.none.text")))
         for kind, title, text in items[:3]:
             notice(self.todo_body, title, text, kind).pack(fill="x", pady=(P(0), P(7)))
-        self.todo_count.configure(text=f"{len(items)} 项")
+        self.todo_count.configure(
+            text=t("overview.todo.count", count=len(items)))
 
     def _fill_kv(self, col: int, rows: list[tuple[str, str]]) -> None:
         holder = getattr(self, f"_kvcol{col}", None)

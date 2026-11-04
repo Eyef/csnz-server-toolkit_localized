@@ -20,6 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
+from .i18n import t
+
 CREATE_NO_WINDOW = 0x08000000
 
 LOG_LINE_RE = re.compile(r"^\[(?P<ts>[^\]]+)\]\s*\[(?P<level>[A-Z]+)\]\s*(?P<msg>.*)$")
@@ -68,12 +70,12 @@ class ServerProcess:
     # ---- 生命周期 ----
     def start(self, root: Path) -> tuple[bool, str]:
         if self.running:
-            return False, "服务端已在运行"
+            return False, t("server.start.already_running")
         self._root = root
         self._stopping = False
         exe = root / "CSNZ_Server.exe"
         if not exe.exists():
-            return False, f"找不到 {exe}"
+            return False, t("server.start.exe_missing", exe=exe)
         try:
             self.proc = subprocess.Popen(
                 [str(exe)],
@@ -85,11 +87,11 @@ class ServerProcess:
                 bufsize=1,
             )
         except OSError as e:
-            return False, f"启动失败：{e}"
+            return False, t("server.start.failed", error=e)
         self._started_at = __import__("time").time()
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
-        return True, f"已启动，PID {self.proc.pid}"
+        return True, t("server.start.ok", pid=self.proc.pid)
 
     def _read_loop(self) -> None:
         assert self.proc and self.proc.stdout
@@ -105,7 +107,7 @@ class ServerProcess:
                 except Exception:
                     pass
         code = self.proc.poll() if self.proc else None
-        self._emit(f"--- 服务端进程已退出 (exit={code}) ---")
+        self._emit(t("server.exited", code=code))
         self._notify_state()
         self._maybe_restart(code)
 
@@ -154,7 +156,7 @@ class ServerProcess:
         import time
 
         if self._stopping or self._root is None:
-            self._emit("--- 已手动关闭，守护不重启 ---")
+            self._emit(t("server.guard.manual_stop"))
             return
 
         uptime = (time.time() - self._started_at) if self._started_at else 0.0
@@ -162,19 +164,20 @@ class ServerProcess:
             # 稳定运行过一段时间才崩，视为偶发故障，重置计数
             self._restart_attempts = 0
         else:
-            self._emit(f"--- 本次仅存活 {uptime:.0f} 秒，视为异常退出 ---")
+            self._emit(t("server.guard.short_life", seconds=f"{uptime:.0f}"))
 
         if self._restart_attempts >= self.max_restart_attempts:
-            self._emit(
-                f"--- 连续 {self._restart_attempts} 次异常退出，已停止守护，"
-                f"请检查 Logs 目录与崩溃转储 (*.mdmp) ---"
-            )
+            self._emit(t("server.guard.give_up", attempts=self._restart_attempts))
             return
 
         self._restart_attempts += 1
         self._emit(
-            f"--- 服务端已掉线，{self.restart_delay:.0f} 秒后自动重启"
-            f"（第 {self._restart_attempts}/{self.max_restart_attempts} 次）---"
+            t(
+                "server.guard.restarting",
+                delay=f"{self.restart_delay:.0f}",
+                attempt=self._restart_attempts,
+                max=self.max_restart_attempts,
+            )
         )
         self._restart_thread = threading.Thread(
             target=self._restart_after_delay, daemon=True
@@ -188,31 +191,31 @@ class ServerProcess:
             return
         ok, msg = self.start(self._root)
         if ok:
-            self._emit(f"--- 守护：服务端已重新启动（PID {self.pid}）---")
+            self._emit(t("server.guard.restarted", pid=self.pid))
         else:
-            self._emit(f"--- 守护：重启失败（{msg}），稍后重试 ---")
+            self._emit(t("server.guard.restart_failed", error=msg))
             # 启动本身就失败（如端口仍被占用），继续按退避重试
             if not self._stopping:
                 self._maybe_restart(None)
 
     def send(self, command: str) -> tuple[bool, str]:
         if not self.running:
-            return False, "服务端未运行"
+            return False, t("server.send.not_running")
         assert self.proc and self.proc.stdin
         command = command.strip()
         if not command:
-            return False, "命令为空"
+            return False, t("server.send.empty")
         try:
             self.proc.stdin.write((command + "\n").encode("gbk", errors="replace"))
             self.proc.stdin.flush()
         except (OSError, ValueError) as e:
-            return False, f"写入失败：{e}"
+            return False, t("server.send.write_failed", error=e)
         self._emit(f">> {command}")
-        return True, "已发送"
+        return True, t("server.send.ok")
 
     def stop(self, timeout: float = 15.0) -> tuple[bool, str]:
         if not self.running:
-            return False, "服务端未运行"
+            return False, t("server.stop.not_running")
         # 用户主动关闭：必须先置位，否则读循环看到退出会触发自动重启
         self._stopping = True
         # shutdown 会先给全服发维护公告再优雅关闭
@@ -222,21 +225,21 @@ class ServerProcess:
             self.proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             self.proc.kill()
-            return True, "超时，已强制结束"
-        return True, "已关闭"
+            return True, t("server.stop.timeout")
+        return True, t("server.stop.ok")
 
     def kill(self) -> tuple[bool, str]:
         """强制结束，不等优雅关闭。用于服务端卡死、shutdown 无响应。"""
         if not self.running:
-            return False, "服务端未运行"
+            return False, t("server.kill.not_running")
         self._stopping = True
         assert self.proc
         try:
             self.proc.kill()
             self.proc.wait(timeout=5)
         except (OSError, subprocess.TimeoutExpired) as e:
-            return False, f"结束失败：{e}"
-        return True, "已强制结束"
+            return False, t("server.kill.failed", error=e)
+        return True, t("server.kill.ok")
 
 
 class LogTail:
@@ -299,7 +302,7 @@ class LogTail:
 
     @property
     def current_name(self) -> str:
-        return self.path.name if self.path else "（等待本次运行的日志文件）"
+        return self.path.name if self.path else t("server.log.waiting")
 
 
 def parse_log_line(line: str) -> tuple[str, str, str]:

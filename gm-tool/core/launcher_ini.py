@@ -16,6 +16,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from .i18n import t
+
 BOM = "\ufeff"
 DEFAULT_CLIENT = "CSNZ_Client\\Bin"
 
@@ -36,7 +38,7 @@ class LauncherIni:
         self.exists = self.path.exists()
         if not self.exists:
             self.entries = {"ip": "127.0.0.1", "port": "30002", "client": DEFAULT_CLIENT}
-            self.comment_lines = ["; CSNZ 启动器配置"]
+            self.comment_lines = [t("launcher.default_comment")]
             return
 
         raw = self.path.read_bytes()
@@ -63,7 +65,7 @@ class LauncherIni:
             if self.path.exists():
                 shutil.copy2(self.path, backup)
 
-        lines = list(self.comment_lines) or ["; CSNZ 启动器配置"]
+        lines = list(self.comment_lines) or [t("launcher.default_comment")]
         for key in ("ip", "port", "client"):
             if key in self.entries:
                 lines.append(f"{key}={self.entries[key]}")
@@ -93,16 +95,16 @@ class LauncherIni:
         ip = self.get("ip")
         port = self.get("port")
         if not ip:
-            problems.append("客户端连接 IP 不能为空")
+            problems.append(t("launcher.validation.ip_empty"))
         else:
             parts = ip.split(".")
             ok = len(parts) == 4 and all(
                 p.isdigit() and 0 <= int(p) <= 255 for p in parts
             )
             if not ok and ip not in ("localhost",):
-                problems.append(f"客户端连接 IP 格式不正确：{ip}（应形如 127.0.0.1 或 192.168.1.10）")
+                problems.append(t("launcher.validation.ip_format", ip=ip))
         if not port.isdigit() or not (1 <= int(port) <= 65535):
-            problems.append(f"客户端连接端口非法：{port}（应为 1-65535）")
+            problems.append(t("launcher.validation.port", port=port))
         return problems
 
 

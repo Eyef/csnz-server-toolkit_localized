@@ -1,62 +1,62 @@
-# 贡献指南
+# Contributing
 
-## 开发环境
+## Development Environment
 
 - Python 3.8+
-- Windows（部分功能依赖 Win32 API，如 DPAPI）
+- Windows (some features depend on Win32 APIs such as DPAPI)
 
 ```bash
 pip install -r auth-server/requirements.txt
 ```
 
-管理工具与登录器**仅用标准库**，无需额外依赖。
+The management tool and launcher use **only the standard library** and need no extra dependencies.
 
-## 代码风格
+## Code Style
 
-- 中文注释，解释「为什么」而不是「做了什么」
-- 涉及服务端规则的代码，注释里附源码文件名
-- 命名用完整单词，不用缩写
+- Chinese comments are acceptable; explain "why", not "what"
+- For code that mirrors server rules, cite the source file in a comment
+- Use full words for names instead of abbreviations
 
-## 提交前检查
+## Pre-commit Checks
 
-### 1. 编译检查
+### 1. Compile check
 
 ```bash
 python -m compileall gm-tool auth-server launcher
 ```
 
-### 2. 数据安全
+### 2. Data safety
 
-涉及数据库写操作的改动，**必须在副本上测试**：
+Changes that write to the database **must be tested on a copy**:
 
 ```python
 import shutil, tempfile, pathlib
 tmp = pathlib.Path(tempfile.mkdtemp())
 shutil.copy2("UserDatabase.db3", tmp / "UserDatabase.db3")
-# 在副本上操作
+# work on the copy
 ```
 
-绝不直接改真实存档。
+Never modify the real save data directly.
 
-### 3. 规则依据
+### 3. Rule provenance
 
-新增的配置写入规则必须能指出源码位置，例如：
+New configuration-writing rules must cite the server source, for example:
 
 ```python
-# 复刻自 CItemManager::AddItem：
-# 可堆叠道具同 ID 累加 count，不新建行
+# Mirrors CItemManager::AddItem:
+# stackable items accumulate count for the same ID; no new row
 if item.stackable and exists:
     ...
 ```
 
-## PR 要求
+## Pull Request Requirements
 
-- 一个 PR 只做一件事
-- 说明改了什么、为什么改、如何验证
-- 涉及界面的改动附截图
+- One PR does one thing
+- Explain what changed, why, and how it was verified
+- Include screenshots for UI changes
 
-## 安全
+## Security
 
-- 不要提交 `config.json`（含密钥）
-- 不要提交 `UserDatabase.db3`（含玩家数据）
-- 不要提交 `*.log` / `*.mdmp`（可能含隐私）
+- Do not commit `config.json` (it contains secrets)
+- Do not commit `UserDatabase.db3` (it contains player data)
+- Do not commit `*.log` / `*.mdmp` (they may contain private data)

@@ -26,6 +26,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.i18n import t
+
 # 与服务端 definitions.h 一致
 CSO_24_HOURS_IN_MINUTES = 1440
 
@@ -50,12 +52,12 @@ def validate_credentials(username: str, password: str) -> None:
     if not (5 <= len(password) <= 15) or password.isdigit():
         raise AuthError(
             "PASSWORD_WRONG",
-            "密码需 5-15 位，且不能是纯数字",
+            t("account.password_rules"),
         )
     if not USERNAME_RE.match(username):
         raise AuthError(
             "USERNAME_WRONG",
-            "账号需 5-15 位，只能包含英文字母和数字",
+            t("account.username_rules"),
         )
 
 
@@ -108,7 +110,7 @@ class AccountStore:
             return False, ""
         if row["term"] and row["term"] <= now_minutes():
             return False, ""      # 已过期
-        return True, row["reason"] or "账号已被封禁"
+        return True, row["reason"] or t("account.banned_default")
 
     def ban_ip(self, ip: str) -> None:
         """加入 IP 黑名单。服务端在 TCP 连接建立时即拒绝。"""
@@ -140,7 +142,7 @@ class AccountStore:
                 (username, password),
             ).fetchone()
         if not row:
-            raise AuthError("LOGIN_FAILED", "账号或密码错误")
+            raise AuthError("LOGIN_FAILED", t("account.login_failed"))
         return int(row["userID"])
 
     def is_online(self, user_id: int) -> bool:
@@ -178,9 +180,10 @@ class AccountStore:
         validate_credentials(username, password)
 
         if self.is_ip_banned(ip):
-            raise AuthError("IP_BANNED", "该 IP 已被封禁")
+            raise AuthError("IP_BANNED", t("account.ip_banned"))
         if self.max_reg_per_ip and self.count_registrations_by_ip(ip) >= self.max_reg_per_ip:
-            raise AuthError("REG_IP_LIMIT", f"该 IP 最多注册 {self.max_reg_per_ip} 个账号")
+            raise AuthError("REG_IP_LIMIT",
+                            t("account.register_ip_limit", max=self.max_reg_per_ip))
 
         conn = self._connect()
         try:
@@ -188,7 +191,7 @@ class AccountStore:
                 "SELECT 1 FROM User WHERE userName = ? LIMIT 1", (username,)
             ).fetchone()
             if exists:
-                raise AuthError("USERNAME_EXIST", "该账号已存在")
+                raise AuthError("USERNAME_EXIST", t("account.username_exists"))
 
             # userID 必须取自 UserDist 游标
             row = conn.execute("SELECT userIDNext FROM UserDist").fetchone()
@@ -209,7 +212,7 @@ class AccountStore:
             raise
         except Exception as e:
             conn.rollback()
-            raise AuthError("DB_ERROR", f"数据库写入失败：{e}")
+            raise AuthError("DB_ERROR", t("account.db_error", error=e))
         finally:
             conn.close()
 

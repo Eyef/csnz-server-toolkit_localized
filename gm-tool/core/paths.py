@@ -1,16 +1,26 @@
 """路径与运行配置。
 
-工具放在服务端根目录下的 GM_Tool\ 里，默认以父目录为服务端根，
-也可通过 config.json 的 server_root 覆盖（例如工具放到别处）。
+源码运行时，工具放在服务端根目录下的 gm-tool\\ 里，默认以父目录为服务端根。
+用 PyInstaller 打包成 exe 后，exe 所在目录视为工具目录：默认放在服务端
+根目录（与 CSNZ_Server.exe 同级），也可通过 config.json 的 server_root 覆盖。
+
+PyInstaller onefile 会在每次启动时把资源解压到临时目录（sys._MEIPASS），
+退出即删除。因此「可写数据」（config.json / logs / backups）必须放在 exe
+旁边，只有随包资源（locales）才从 BUNDLE_DIR 读取。
 """
 from __future__ import annotations
 
 import json
-import os
+import sys
 from pathlib import Path
 
-TOOL_DIR = Path(__file__).resolve().parent.parent
-CONFIG_PATH = TOOL_DIR / "config.json"
+FROZEN = bool(getattr(sys, "frozen", False))
+APP_DIR = (Path(sys.executable).resolve().parent if FROZEN
+           else Path(__file__).resolve().parent.parent)
+BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
+
+TOOL_DIR = APP_DIR
+CONFIG_PATH = APP_DIR / "config.json"
 
 # 语言包：客户端解包出来的中文 token 表，用于把内部英文名翻成中文显示名
 LANG_CANDIDATES = (
@@ -20,9 +30,22 @@ LANG_CANDIDATES = (
     "CSNZ_Client/Data/resource/cso_chn.txt",
 )
 
+
+def _default_server_root() -> str:
+    """源码版在 gm-tool\\ 子目录，exe 版通常直接放在服务端根目录。"""
+    if not FROZEN:
+        return ".."
+    if (APP_DIR / "CSNZ_Server.exe").exists():
+        return "."
+    if (APP_DIR.parent / "CSNZ_Server.exe").exists():
+        return ".."
+    return "."
+
+
 DEFAULTS = {
-    "server_root": "..",
+    "server_root": _default_server_root(),
     "lang_file": "",
+    "language": "en",
     "auto_backup": True,
     "max_backups": 50,
 }
@@ -83,7 +106,11 @@ class Paths:
         return None
 
     def missing(self) -> list[str]:
-        """返回缺失的必需文件，供 UI 提示。"""
+        """返回缺失的必需文件，供 UI 提示。
+
+        launcher.ini 不在此列：它是登录器配置，缺失时 LauncherIni 会
+        使用默认值，不应阻止工具启动或在真实服务端目录里误报。
+        """
         out = []
         for label, p in (
             ("CSNZ_Server.exe", self.server_exe),
@@ -91,7 +118,6 @@ class Paths:
             ("UserDatabase.db3", self.db),
             ("Data/Item.csv", self.item_csv),
             ("Shop.json", self.shop_json),
-            ("launcher.ini", self.launcher_ini),
         ):
             if not p.exists():
                 out.append(label)
@@ -102,7 +128,9 @@ def load_config() -> dict:
     cfg = dict(DEFAULTS)
     if CONFIG_PATH.exists():
         try:
-            cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+            # utf-8-sig: Windows editors often save config.json with a BOM,
+            # which plain utf-8 would reject and silently reset to defaults.
+            cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig")))
         except Exception:
             pass
     return cfg
@@ -126,4 +154,7 @@ def resolve_root(cfg: dict | None = None) -> Path:
     return build_paths(cfg).root
 
 
-__all__ = ["Paths", "TOOL_DIR", "CONFIG_PATH", "load_config", "save_config", "build_paths", "resolve_root"]
+__all__ = [
+    "FROZEN", "APP_DIR", "BUNDLE_DIR", "TOOL_DIR", "CONFIG_PATH", "Paths",
+    "load_config", "save_config", "build_paths", "resolve_root",
+]

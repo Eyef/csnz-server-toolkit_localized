@@ -20,6 +20,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .i18n import t
 from .itemdb import Item, is_stackable
 
 CSO_24_HOURS_IN_MINUTES = 1440
@@ -31,20 +32,20 @@ def now_minutes() -> int:
     return int(time.time() // 60)
 
 
-def minutes_to_str(m: int, permanent_label: str = "永久") -> str:
+def minutes_to_str(m: int, permanent_label: str | None = None) -> str:
     if not m:
-        return permanent_label
+        return t("common.permanent") if permanent_label is None else permanent_label
     ts = datetime.fromtimestamp(m * 60, tz=timezone.utc).astimezone()
     return ts.strftime("%Y-%m-%d %H:%M")
 
 
 def days_left(expiry_min: int) -> str:
     if not expiry_min:
-        return "永久"
+        return t("common.permanent")
     delta = expiry_min - now_minutes()
     if delta <= 0:
-        return "已过期"
-    return f"{delta / CSO_24_HOURS_IN_MINUTES:.1f} 天"
+        return t("common.expired")
+    return t("common.days_left", n=f"{delta / CSO_24_HOURS_IN_MINUTES:.1f}")
 
 
 class InventoryRow:
@@ -409,7 +410,7 @@ class Database:
         slot_max = self.slot_max_default
 
         if self.inventory_count(user_id) >= slot_max:
-            return False, f"背包已满（{slot_max}）"
+            return False, t("db.inventory_full", max=slot_max)
 
         ts = now_minutes()
 
@@ -421,7 +422,7 @@ class Database:
                 (count, user_id),
             )
             c.commit()
-            return True, f"密码箱 +{count}（累加到 passwordBoxes，不占背包槽）"
+            return True, t("db.password_box", count=count)
 
         exists = c.execute(
             "SELECT * FROM UserInventory WHERE userID = ? AND itemID = ? LIMIT 1",
@@ -435,7 +436,8 @@ class Database:
                 (count, user_id, exists["slot"]),
             )
             c.commit()
-            return True, f"已堆叠：{item.display_name} +{count}（槽 {exists['slot']}）"
+            return True, t("db.stacked", name=item.display_name, count=count,
+                           slot=exists["slot"])
 
         # 规则 5：已永久持有 + 要发限时 → 延长
         if exists and days:
@@ -452,10 +454,9 @@ class Database:
                     (new_expiry, user_id, ext["slot"]),
                 )
                 c.commit()
-                return True, (
-                    f"已延长：{item.display_name} 至 {minutes_to_str(new_expiry)}"
-                    f"（槽 {ext['slot']}）"
-                )
+                return True, t("db.extended", name=item.display_name,
+                               date=minutes_to_str(new_expiry),
+                               slot=ext["slot"])
 
         # 规则 2 + 4：新建行（永久）或限时行
         status, in_use = 1, 1
@@ -475,13 +476,14 @@ class Database:
         )
         c.commit()
 
-        note = f"已发放：{item.display_name} ×{count}"
-        note += f"，{minutes_to_str(expiry)} 到期" if expiry else "，永久"
-        note += f"（槽 {slot}）"
+        note = t("db.given", name=item.display_name, count=count)
+        note += (t("db.given_expiry", date=minutes_to_str(expiry))
+                 if expiry else t("db.given_permanent"))
+        note += t("db.given_slot", slot=slot)
         if item.special_note:
-            note += f"\n注意：{item.special_note}"
+            note += "\n" + t("db.note", note=item.special_note)
         if item.is_costume:
-            note += "\n注意：装扮需在「装扮」页设为穿戴才会生效"
+            note += "\n" + t("db.costume_note")
         return True, note
 
     def remove_slot(self, user_id: int, slot: int) -> tuple[bool, str]:
@@ -492,7 +494,7 @@ class Database:
             (user_id, slot),
         ).fetchone()
         if not row or not row["itemID"]:
-            return False, "该槽位没有道具"
+            return False, t("db.slot_empty")
         c.execute(
             "UPDATE UserInventory SET itemID = 0, count = 0, status = 0, inUse = 0,"
             " obtainDate = 0, expiryDate = 0, isClanItem = 0, enhancementLevel = 0,"
@@ -502,7 +504,7 @@ class Database:
             (user_id, slot),
         )
         c.commit()
-        return True, f"已清空槽 {slot}（itemID {row['itemID']}）"
+        return True, t("db.slot_cleared", slot=slot, item_id=row["itemID"])
 
     def set_item_expiry(self, user_id: int, slot: int, days: int) -> tuple[bool, str]:
         c = self._c()
@@ -511,14 +513,15 @@ class Database:
             (user_id, slot),
         ).fetchone()
         if not row:
-            return False, "槽位不存在"
+            return False, t("db.slot_missing")
         new_expiry = 0 if days <= 0 else now_minutes() + days * CSO_24_HOURS_IN_MINUTES
         c.execute(
             "UPDATE UserInventory SET expiryDate = ? WHERE userID = ? AND slot = ?",
             (new_expiry, user_id, slot),
         )
         c.commit()
-        return True, f"槽 {slot} 到期时间 → {minutes_to_str(new_expiry)}"
+        return True, t("db.expiry_set", slot=slot,
+                       date=minutes_to_str(new_expiry))
 
     # ---- 装扮 ----
     COSTUME_COLUMNS = {
@@ -544,7 +547,7 @@ class Database:
 
     def set_costume(self, user_id: int, column: str, item_id: int) -> tuple[bool, str]:
         if column not in ("head", "back", "arm", "pelvis", "face", "tattoo", "pet"):
-            return False, f"未知装扮位：{column}"
+            return False, t("db.unknown_costume_slot", column=column)
         c = self._c()
         row = c.execute(
             "SELECT 1 FROM UserCostumeLoadout WHERE userID = ?", (user_id,)
@@ -565,7 +568,7 @@ class Database:
                 (item_id, user_id),
             )
         c.commit()
-        return True, f"已设置 {column} = {item_id}"
+        return True, t("db.costume_set", column=column, item_id=item_id)
 
     def set_zb_costume(self, user_id: int, slot: int, item_id: int) -> tuple[bool, str]:
         c = self._c()
@@ -589,7 +592,7 @@ class Database:
                 (user_id, slot, item_id),
             )
         c.commit()
-        return True, f"已设置生化皮肤槽 {slot} = {item_id}"
+        return True, t("db.zb_costume_set", slot=slot, item_id=item_id)
 
 
 __all__ = [

@@ -1,58 +1,58 @@
-# 部署指南
+# Deployment Guide
 
-## 端口规划
+## Port Plan
 
-| 服务 | 默认端口 | 可改 | 说明 |
+| Service | Default port | Configurable | Notes |
 |---|---|---|---|
-| CSNZ 游戏服务端 | 30002 | 是（`ServerConfig.Port`） | TCP + UDP 共用 |
-| 鉴权服务 | 38120 | 是（管理工具内可改） | 仅 TCP |
-| 客户端 UDP | 27015 / 27005 | 否 | 游戏引擎固定 |
+| CSNZ game server | 30002 | Yes (`ServerConfig.Port`) | Shared by TCP + UDP |
+| Authentication service | 38120 | Yes (from the management tool) | TCP only |
+| Client UDP | 27015 / 27005 | No | Fixed by the game engine |
 
-**端口只有一个来源。** 服务端源码里：
+**There is only one source for the port.** In the server source:
 
 ```cpp
 tcpPort = udpPort = cfg.value("Port", DEFAULT_PORT);
 ```
 
-TCP 与 UDP 共用同一个端口，客户端也必须连同一个，所以界面只设一次。
+TCP and UDP share the same port, and clients must connect to that same port, so the tool asks for it only once.
 
-## 安全组
+## Security Group
 
-云服务器需放行：
+Allow these ports on the cloud server:
 
-- `30002` TCP + UDP（玩家连游戏）
-- `38120` TCP（登录器连鉴权服务）
+- `30002` TCP + UDP (players connect to the game)
+- `38120` TCP (the launcher connects to the authentication service)
 
-> 忘记放行鉴权端口是最常见的「登录器连不上」原因。
+> Forgetting to open the authentication port is the most common cause of "the launcher cannot connect".
 
-## API 密钥
+## API Key
 
-三个配置文件必须用**同一把密钥**：
+All three configuration files must use **the same key**:
 
-| 文件 | 字段 |
+| File | Field |
 |---|---|
 | `auth-server/config.json` | `api_key` |
 | `gm-tool/config.json` | `auth_api_key` |
 
-生成方式：
+Generate one with:
 
 ```bash
 python -c "import secrets;print(secrets.token_hex(32).upper())"
 ```
 
-修改任意一处后，另外两处必须同步，否则登录器会收到 401。
+After changing any of them, synchronize the others too, otherwise the launcher receives 401.
 
-## HTTPS（生产环境必须）
+## HTTPS (required in production)
 
-密码在服务端是**明文存储、明文比对**的：
+Passwords are stored and compared in **plaintext** by the server:
 
 ```sql
 SELECT userID FROM User WHERE userName = ? AND password = ?
 ```
 
-改成哈希会让游戏客户端自带的登录失效，所以无法加密存储。唯一弥补手段是传输层加密。
+Hashing them would break the game client's built-in login, so encrypted storage is not possible. The only mitigation is transport encryption.
 
-`auth-server/config.json`：
+`auth-server/config.json`:
 
 ```json
 {
@@ -62,22 +62,22 @@ SELECT userID FROM User WHERE userName = ? AND password = ?
 }
 ```
 
-证书放在 `auth-server/` 目录下。
+Put the certificates in the `auth-server/` directory.
 
-客户端登录器的 `auth_base_url` 也需改成 `https://`。
+The launcher's `auth_base_url` must also use `https://`.
 
-## 地址配置
+## Address Configuration
 
-玩家客户端登录器需要填写两个地址：
+The player launcher needs two addresses:
 
-- 鉴权服务地址：`https://你的域名:38120`
-- 游戏服务器地址：`你的公网IP:30002`
+- Authentication service: `https://your-domain:38120`
+- Game server: `your-public-ip:30002`
 
-这两个地址必须公网可达。
+Both must be reachable over the public internet.
 
-## 反向代理（推荐）
+## Reverse Proxy (recommended)
 
-用 Nginx 挂 HTTPS，鉴权服务只监听 127.0.0.1：
+Use Nginx for HTTPS and let the authentication service listen only on 127.0.0.1:
 
 ```nginx
 server {
@@ -95,14 +95,13 @@ server {
 }
 ```
 
-鉴权服务会读取 `X-Forwarded-For` 首段作为真实客户端 IP，
-限频与自动封禁才能按真实来源计数。
+The authentication service reads the first entry of `X-Forwarded-For` as the real client IP, so rate limiting and automatic bans count the real source.
 
-此时 `auth-server/config.json` 可设 `listen_host: "127.0.0.1"`。
+With this setup, `auth-server/config.json` can set `listen_host: "127.0.0.1"`.
 
-## 开机自启
+## Starting at Boot
 
-管理工具本身不注册服务。若需开机自启：
+The management tool does not register a service. To start it at boot:
 
 1. `Win + R` → `shell:startup`
-2. 放入 `gm-tool/启动.bat` 的快捷方式
+2. Put a shortcut to `gm-tool/Start.bat` (or `CSNZ.GMTool.exe`) in that folder

@@ -13,6 +13,8 @@ import json
 import re
 from pathlib import Path
 
+from .i18n import t
+
 # 与源码 CItemManager::AddItem 判定相关的列
 COL_ID = "ID"
 COL_NAME = "Name"
@@ -24,25 +26,51 @@ COL_GRADE = "ItemGrade"
 COL_PERIOD = "Period"
 COL_EXTEND = "CanExtend"
 
-CATEGORY_NAMES = {
-    "1": "手枪", "2": "霰弹枪", "3": "冲锋枪", "4": "步枪", "5": "机枪",
-    "6": "装备", "7": "角色", "8": "功能性", "9": "消耗品", "11": "近战",
-    "12": "装扮", "13": "武器部件", "14": "战术装备", "15": "技能", "16": "ClassMod",
-}
 
-USETYPE_NAMES = {
-    "0": "间接使用", "1": "自动使用", "2": "手动使用",
-    "3": "手动(int)", "4": "手动(string)", "5": "弹窗", "6": "不可用",
-}
+class _TranslatedMap(dict):
+    """值存 locale key，读取时按当前语言翻译；保持 dict 的形状与接口。"""
+
+    def __getitem__(self, key):
+        return t(dict.__getitem__(self, key))
+
+    def get(self, key, default=None):
+        try:
+            return t(dict.__getitem__(self, key))
+        except KeyError:
+            return default
+
+    def items(self):
+        return [(k, t(v)) for k, v in dict.items(self)]
+
+    def values(self):
+        return [t(v) for v in dict.values(self)]
+
+
+CATEGORY_NAMES = _TranslatedMap({
+    "1": "item.category.1", "2": "item.category.2",
+    "3": "item.category.3", "4": "item.category.4",
+    "5": "item.category.5", "6": "item.category.6",
+    "7": "item.category.7", "8": "item.category.8",
+    "9": "item.category.9", "11": "item.category.11",
+    "12": "item.category.12", "13": "item.category.13",
+    "14": "item.category.14", "15": "item.category.15",
+    "16": "item.category.16",
+})
+
+USETYPE_NAMES = _TranslatedMap({
+    "0": "item.usetype.0", "1": "item.usetype.1", "2": "item.usetype.2",
+    "3": "item.usetype.3", "4": "item.usetype.4", "5": "item.usetype.5",
+    "6": "item.usetype.6",
+})
 
 # 源码里被特殊处理的道具，工具必须知道，否则改库会与服务端不一致
-SPECIAL_ITEMS = {
-    166: "密码箱：不占背包槽，改为累加 UserCharacter.passwordBoxes",
-    676: "道具延长器",
-    8357: "超级房卡：加入时给房主设置 superRoom 标记",
-    439: "大头模式：加入时给房主设置 sd 标记",
-    112: "C4 音效：加入时给房主设置 c4Timer 标记",
-}
+SPECIAL_ITEMS = _TranslatedMap({
+    166: "item.special.166",
+    676: "item.special.676",
+    8357: "item.special.8357",
+    439: "item.special.439",
+    112: "item.special.112",
+})
 
 
 def is_stackable(category: int, use_type: int) -> bool:
@@ -85,7 +113,10 @@ class Item:
 
     @property
     def category_name(self) -> str:
-        return CATEGORY_NAMES.get(str(self.category), f"其他({self.category})")
+        name = CATEGORY_NAMES.get(str(self.category))
+        if name is not None:
+            return name
+        return t("item.category.other", id=self.category)
 
     @property
     def stackable(self) -> bool:
@@ -131,14 +162,16 @@ class ItemDB:
         text = raw.decode("euc-kr", errors="replace")
         rows = list(csv.reader(io.StringIO(text)))
         if len(rows) < 3:
-            raise ValueError(f"{item_csv.name} 行数异常：{len(rows)}")
+            raise ValueError(t("itemdb.error.rows", name=item_csv.name,
+                               count=len(rows)))
 
         # 第 0 行是说明、第 1 行才是列头（首列带 ; 前缀）
         header = [c.lstrip(";").strip() for c in rows[1]]
         idx = {h: i for i, h in enumerate(header)}
         for need in (COL_ID, COL_NAME, COL_CLASS, COL_CATEGORY, COL_USETYPE):
             if need not in idx:
-                raise ValueError(f"{item_csv.name} 缺少列 {need}")
+                raise ValueError(t("itemdb.error.missing_column",
+                                   name=item_csv.name, column=need))
 
         width = len(header)
         for row in rows[2:]:
@@ -204,7 +237,7 @@ class ItemDB:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except Exception as e:
-            self.errors.append(f"别名表读取失败：{e}")
+            self.errors.append(t("itemdb.error.aliases", error=e))
             return
         for k, v in data.items():
             item = self.items.get(int(k))

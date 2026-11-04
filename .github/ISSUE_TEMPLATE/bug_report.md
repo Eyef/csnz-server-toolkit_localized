@@ -1,32 +1,32 @@
 ---
-name: Bug 报告
-about: 报告一个可复现的问题
+name: Bug report
+about: Report a reproducible problem
 title: "[Bug] "
 labels: bug
 ---
 
-## 问题描述
-<!-- 清楚描述发生了什么 -->
+## Description
+<!-- Clearly describe what happened -->
 
-## 复现步骤
+## Steps to Reproduce
 1.
 2.
 3.
 
-## 期望行为
-<!-- 你认为应该发生什么 -->
+## Expected Behavior
+<!-- What you expected to happen -->
 
-## 实际行为
-<!-- 实际发生了什么，有报错请贴完整堆栈 -->
+## Actual Behavior
+<!-- What actually happened; include the full stack trace for errors -->
 
-## 环境
-- 组件：管理工具 / 鉴权服务 / 登录器
-- Python 版本：
-- CSNZ 服务端 Build：
-- Windows 版本：
+## Environment
+- Component: management tool / authentication service / launcher
+- Python version:
+- CSNZ server build:
+- Windows version:
 
-## 日志
-<!-- Logs/Server_*.log 或 auth-server/auth.log 相关片段 -->
+## Logs
+<!-- Relevant excerpts from Logs/Server_*.log or auth-server/auth.log -->
 ```
 
 ```

@@ -13,6 +13,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from .i18n import t
+
 
 class AuthAdminError(Exception):
     pass
@@ -31,7 +33,7 @@ class AuthAdmin:
     def _request(self, path: str, method: str = "GET",
                  payload: dict | None = None) -> dict:
         if not self.configured:
-            raise AuthAdminError("未配置鉴权服务地址（GM_Tool/config.json 的 auth_base_url）")
+            raise AuthAdminError(t("authclient.not_configured"))
         url = f"{self.base_url}{path}"
         data = None
         headers = {"X-Api-Key": self.api_key}
@@ -47,10 +49,11 @@ class AuthAdmin:
                 body = json.loads(e.read().decode("utf-8"))
                 detail = body.get("detail") or body.get("message") or f"HTTP {e.code}"
             except Exception:
-                detail = "密钥无效或服务拒绝" if e.code == 401 else f"HTTP {e.code}"
+                detail = t("authclient.invalid_key") if e.code == 401 else f"HTTP {e.code}"
             raise AuthAdminError(detail)
         except urllib.error.URLError as e:
-            raise AuthAdminError(f"无法连接鉴权服务：{getattr(e, 'reason', e)}")
+            raise AuthAdminError(
+                t("authclient.unreachable", error=getattr(e, "reason", e)))
         except Exception as e:
             raise AuthAdminError(str(e))
 

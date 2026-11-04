@@ -1,4 +1,5 @@
 {
+  "language": "en",
   "server_root": "..",
   "listen_host": "0.0.0.0",
   "listen_port": 38120,
@@ -17,6 +18,6 @@
   "auto_ban": {
     "enabled": true,
     "threshold": 30,
-    "_comment": "共享IP(网吧/学校)建议调到100以上，永久封禁无自动解封"
+    "_comment": "For shared IPs (internet cafes/schools), raise this above 100; permanent bans have no automatic unban"
   }
 }

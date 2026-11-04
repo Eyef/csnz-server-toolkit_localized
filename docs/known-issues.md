@@ -1,92 +1,87 @@
-# 已知问题
+# Known Issues
 
-这里记录的是**服务端本身的缺陷**，不是工具的问题。工具已做规避，
-但你自行修改服务端或第三方工具时仍需注意。
+This page documents **defects in the server itself**, not problems in this tool.
+The tool works around them, but keep them in mind if you modify the server or use third-party tools.
 
-## 1. `shopreload` 会让商品数翻倍 ⚠️
+## 1. `shopreload` duplicates products ⚠️
 
-`CommandShopReload` 直接调 `g_ShopManager.Init()`，而清空列表的
-`Shutdown()` 没有被调用：
+`CommandShopReload` calls `g_ShopManager.Init()` directly, but `Shutdown()`, which clears the list, is never called:
 
 ```cpp
 void CommandShopReload(...) {
-    g_ShopManager.Init();   // m_Products.clear() 在 Shutdown() 里，没被调
+    g_ShopManager.Init();   // m_Products.clear() lives in Shutdown(), which is not called
     ...
 }
 ```
 
-所以每执行一次就在旧列表后面再追加一遍。实测：
+So each execution appends another copy to the old list. Measured behavior:
 
 ```
-初始        47 products
+initial     47 products
 shopreload  94 products
 shopreload  141 products
 shopreload  188 products
-dbreload    47 products   ← 只有它会先 Shutdown 再 Init
+dbreload    47 products   ← only dbreload calls Shutdown before Init
 ```
 
-**后果**：客户端商城出现重复商品、子规格 ID 错位，玩家可能买到错误的东西。
+**Consequence**: clients see duplicate products and shifted tier IDs, so players may buy the wrong item.
 
-**规避**：重载商城请用 `dbreload`。本工具商城页的按钮已改成 dbreload。
+**Workaround**: use `dbreload` to reload the shop. The button on the tool's shop page already uses `dbreload`.
 
-## 2. 密码明文存储
+## 2. Passwords are stored in plaintext
 
-`User.password` 是 `VARCHAR(32)`，SQL 明文比对：
+`User.password` is `VARCHAR(32)`, compared in plaintext by SQL:
 
 ```sql
 SELECT userID FROM User WHERE userName = ? AND password = ?
 ```
 
-**为什么不能改**：游戏客户端自带的登录提交的是明文，改成哈希会让它的登录失效。
-而我们又需要通过客户端的自动登录功能。
+**Why it cannot be changed**: the game client's built-in login submits plaintext, so hashing would break it — and the client's automatic login feature is required.
 
-**规避**：
+**Workarounds**:
 
-- 生产环境**必须开 HTTPS**（见部署指南）
-- 记住密码用 DPAPI 加密存储，磁盘不留明文
-- API 密钥用长随机串
+- **HTTPS is mandatory in production** (see the deployment guide)
+- Store remembered passwords with DPAPI encryption so no plaintext touches disk
+- Use a long random API key
 
-## 3. `IPBanList` 没有过期字段
+## 3. `IPBanList` has no expiry column
 
-表结构只有 `ip` 一列，由服务端定义，**不能加列**（会让服务端读写失败）。
+The table has only an `ip` column, defined by the server. **Columns cannot be added** — doing so breaks server reads and writes.
 
-所以自动封禁只能永久生效，没有自动解封。
+Automatic bans are therefore permanent, with no automatic unban.
 
-**规避**：
+**Workarounds**:
 
-- 阈值默认 30 次，偏保守
-- 网吧 / 校园网这类共享 IP 建议调到 100 以上
-- 误封在管理工具「安全日志」页可手动解封
+- The default threshold is 30 attempts, which is conservative
+- For shared IPs such as internet cafés or school networks, raise it above 100
+- False positives can be removed manually on the **Security log** page
 
-## 4. 监听地址写死 `0.0.0.0`
+## 4. The listen address is hard-coded to `0.0.0.0`
 
 ```cpp
 hints.ai_flags = AI_PASSIVE;
 getaddrinfo(NULL, port.c_str(), &hints, &result);
 ```
 
-传 `NULL` 等价于绑定所有网卡。`ServerConfig.json` 里没有任何 IP / bind 字段。
+Passing `NULL` binds all interfaces. `ServerConfig.json` has no IP / bind field.
 
-**规避**：只能改端口，不能限定网卡。如需绑定特定 IP，只能从系统防火墙层面限制。
+**Workaround**: only the port can be changed, not the interface. To bind a specific IP, restrict it at the firewall level.
 
-## 5. `stdout` 全缓冲
+## 5. `stdout` is fully buffered
 
-服务端进程的 stdout 一旦被重定向到管道就变成全缓冲（4KB），
-不主动 flush，日志会卡在缓冲区里。
+Once the server process's stdout is redirected to a pipe, it becomes fully buffered (4 KB) and is not flushed proactively, so logs stay stuck in the buffer.
 
-**规避**：以 `Logs/Server_*.log` 文件为实时源（`CFileLogger` 用
-`fopen/fclose` 逐条落盘），本工具即采用此方案。
+**Workaround**: use `Logs/Server_*.log` as the real-time source (`CFileLogger` writes each line with `fopen/fclose`). The tool does exactly that.
 
-## 6. `RestartOnCrash` 会拉起脱离管控的进程
+## 6. `RestartOnCrash` spawns an unmanaged process
 
-服务端自带的崩溃重启是：
+The server's built-in crash restart is:
 
 ```cpp
 ForceEndServer();
-ShellExecute(NULL, "open", szPath, NULL, NULL, 1);  // 分离进程
+ShellExecute(NULL, "open", szPath, NULL, NULL, 1);  // detached process
 ```
 
-新进程不接管理工具的命令管道，会变成「工具管不到却占着端口」的孤儿进程。
-实测第二个实例会直接崩在 `bind failed: 10048`。
+The new process does not connect to the management tool's command pipe, so it becomes an orphan that the tool cannot manage while it still holds the port. In testing, the second instance crashes immediately with `bind failed: 10048`.
 
-**规避**：保持 `RestartOnCrash: false`，用管理工具的守护功能代替。
+**Workaround**: keep `RestartOnCrash: false` and use the management tool's supervision feature instead.

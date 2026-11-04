@@ -6,18 +6,21 @@
 """
 from __future__ import annotations
 
+import subprocess
+import sys
 import time
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
 from pathlib import Path
 
-from core import audit
+from core import audit, i18n
 from core.config import ServerConfig
 from core.database import Database
 from core.itemdb import ItemDB
 from core.paths import build_paths, load_config, save_config, TOOL_DIR
 from core.authproc import AuthServerProcess, port_open
+from core.i18n import t
 from core.serverio import LogTail, ServerProcess
 from core.shop import Shop
 
@@ -35,16 +38,16 @@ SIDE_W = 216
 TOP_H = 52
 STATUS_H = 26
 
-# key, 分组, 标题, 图标, 页面类
+# key, group locale key, title locale key, icon, page class
 PAGES = [
-    ("dash", "监控", "总览", "grid", OverviewTab),
-    ("logs", "监控", "运行与日志", "term", LogsTab),
-    ("users", "运营", "用户管理", "users", UsersTab),
-    ("items", "运营", "道具发放", "box", ItemsTab),
-    ("shop", "运营", "商城管理", "cart", ShopTab),
-    ("bans", "安全", "封禁管理", "shield", BansTab),
-    ("auth", "安全", "安全日志", "key", AuthLogTab),
-    ("config", "系统", "服务器配置", "sliders", ConfigTab),
+    ("dash", "app.nav.monitor", "app.nav.dash", "grid", OverviewTab),
+    ("logs", "app.nav.monitor", "app.nav.logs", "term", LogsTab),
+    ("users", "app.nav.operations", "app.nav.users", "users", UsersTab),
+    ("items", "app.nav.operations", "app.nav.items", "box", ItemsTab),
+    ("shop", "app.nav.operations", "app.nav.shop", "cart", ShopTab),
+    ("bans", "app.nav.security", "app.nav.bans", "shield", BansTab),
+    ("auth", "app.nav.security", "app.nav.auth", "key", AuthLogTab),
+    ("config", "app.nav.system", "app.nav.config", "sliders", ConfigTab),
 ]
 
 
@@ -128,10 +131,11 @@ class NavItem(tk.Frame):
 class App(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
-        self.title("CSNZ 服务端管理工具")
+        self.cfg = load_config()
+        i18n.init(self.cfg.get("language", i18n.DEFAULT_LANGUAGE))
+        self.title(t("app.title"))
         self.configure(background=theme.L0)
 
-        self.cfg = load_config()
         self.paths = build_paths(self.cfg)
         self._saved_geometry = layout.apply_geometry(
             self, self.cfg.get("window_geometry")
@@ -161,13 +165,25 @@ class App(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
+    def _find_auth_dir(self) -> Path:
+        """定位鉴权服务目录。
+
+        仓库里叫 ``auth-server``，部署文档和实际服务器上用 ``AuthServer``。
+        Windows 文件系统不区分大小写，但连字符不是大小写差异，所以要逐个试。
+        """
+        for name in ("AuthServer", "auth-server", "auth_server"):
+            candidate = self.paths.root / name
+            if candidate.is_dir():
+                return candidate
+        return self.paths.root / "AuthServer"
+
     def _configure_auth(self) -> None:
-        """从 AuthServer/config.json 读端口，从 GM_Tool/config.json 读脚本位置。
+        """从鉴权服务目录的 config.json 读端口，脚本或 exe 也放在那里。
 
         鉴权服务的监听端口只有一个真实来源：AuthServer/config.json。
         GM 工具不重复存端口，避免两边不一致导致「启动了但登录器连不上」。
         """
-        auth_dir = self.paths.root / "AuthServer"
+        auth_dir = self._find_auth_dir()
         script = auth_dir / "server.py"
         host, port = "127.0.0.1", 38120
         cfg_path = auth_dir / "config.json"
@@ -214,7 +230,8 @@ class App(tk.Tk):
                     encoding="utf-8")
                 written.append(path.name)
             except Exception as e:
-                return False, f"写入 {path.name} 失败：{e}"
+                return False, t("app.auth_port_write_failed",
+                                name=path.name, error=e)
 
         # 同步内存：进程管理器要按新端口探测就绪
         self.auth.configure(self.auth.script, "127.0.0.1", port)
@@ -224,43 +241,42 @@ class App(tk.Tk):
             save_config(self.cfg)
         except Exception:
             pass
-        return True, "、".join(written)
+        return True, ", ".join(written)
 
     # ---- 数据装载 ----
     def _load_data(self) -> None:
         problems = self.paths.missing()
         if problems:
             messagebox.showerror(
-                "文件缺失",
-                "以下文件不存在，工具无法正常工作：\n\n"
-                + "\n".join("  · " + p for p in problems)
-
-                + "\n\n当前服务端根目录：\n" + str(self.paths.root)
-                + "\n\n请把 GM_Tool 文件夹放到 CSNZ 服务端根目录下，"
-                  "或修改 config.json 里的 server_root。",
+                t("app.missing.title"),
+                t("app.missing.body",
+                  files="\n".join("  · " + p for p in problems),
+                  root=self.paths.root),
             )
         try:
             self.db.connect()
         except Exception as e:
-            messagebox.showerror("数据库打开失败", f"{self.paths.db}\n\n{e}")
+            messagebox.showerror(t("app.db_open_failed"),
+                                 f"{self.paths.db}\n\n{e}")
         try:
             self.items.load(self.paths.item_csv, self.paths.lang_file)
             self.items.load_aliases(self.aliases_path)
         except Exception as e:
-            messagebox.showerror("道具表读取失败", f"{self.paths.item_csv}\n\n{e}")
+            messagebox.showerror(t("app.items_read_failed"),
+                                 f"{self.paths.item_csv}\n\n{e}")
         for err in self.items.errors:
             print(err)
         try:
             self.shop.load()
         except Exception as e:
-            messagebox.showerror("Shop.json 读取失败", str(e))
+            messagebox.showerror(t("app.shop_read_failed"), str(e))
         try:
             self.server_config.load()
             self.db.slot_max_default = int(
                 self.server_config.get("InventorySlotMax", 4000) or 4000
             )
         except Exception as e:
-            messagebox.showerror("ServerConfig.json 读取失败", str(e))
+            messagebox.showerror(t("app.serverconfig_read_failed"), str(e))
 
     # ---- 界面 ----
     def _build_ui(self) -> None:
@@ -286,7 +302,7 @@ class App(tk.Tk):
         theme.icons.draw_on(lc, "sliders", "#ffffff", theme.px(14), x=theme.px(6), y=theme.px(6))
         tk.Label(brand, text="CSNZ", font=(theme.FAMILY, 10, "bold"),
                  fg=theme.FG, bg=theme.L1).pack(side="left")
-        tk.Label(brand, text="服务端管理", font=theme.FONT_XS,
+        tk.Label(brand, text=t("app.brand.subtitle"), font=theme.FONT_XS,
                  fg=theme.FG3, bg=theme.L1).pack(side="left", padx=(6, 0))
         tk.Label(brand, text="v2", font=(theme.MONO, 7), fg=theme.FG3,
                  bg=theme.L3, padx=theme.px(4)).pack(side="right", padx=(0, theme.px(12)))
@@ -297,7 +313,10 @@ class App(tk.Tk):
 
         ctx = tk.Frame(header, bg=theme.L0)
         ctx.pack(side="left")
-        self.crumb = tk.Label(ctx, text="监控 · 总览", font=theme.FONT_BOLD,
+        self.crumb = tk.Label(ctx, text=t("app.crumb",
+                                         group=t("app.nav.monitor"),
+                                         title=t("app.nav.dash")),
+                              font=theme.FONT_BOLD,
                               fg=theme.FG, bg=theme.L0, anchor="w")
         self.crumb.pack(anchor="w")
         self.path_label = tk.Label(ctx, text=str(self.paths.root),
@@ -307,19 +326,40 @@ class App(tk.Tk):
 
         # 右侧：状态胶囊 + 启停。side=right 是后进靠左，所以按
         # 「启动 → 停止 → 运行态 → 在线 → 封禁」的顺序 pack。
-        self.btn_start = ttk.Button(header, text="启动服务端", style="Primary.TButton",
+        self.btn_start = ttk.Button(header, text=t("common.start_server"),
+                                    style="Primary.TButton",
                                     command=self._start_server)
         self.btn_start.pack(side="right")
-        self.btn_stop = ttk.Button(header, text="停止", style="DangerGhost.TButton",
+        self.btn_stop = ttk.Button(header, text=t("common.stop"),
+                                   style="DangerGhost.TButton",
                                    command=self._stop_server)
-        self.pill_run = theme.pill(header, "未运行", "danger")
+        self.pill_run = theme.pill(header, t("app.pill.not_running"), "danger")
         self.pill_run.pack(side="right", padx=(0, theme.px(8)))
-        self.pill_auth = theme.pill(header, "鉴权未开", "muted")
+        self.pill_auth = theme.pill(header, t("app.pill.auth_off"), "muted")
         self.pill_auth.pack(side="right", padx=(0, theme.px(8)))
-        self.pill_online = theme.pill(header, "在线 0", "muted")
+        self.pill_online = theme.pill(
+            header, t("app.pill.online", count=0), "muted")
         self.pill_online.pack(side="right", padx=(0, theme.px(6)))
-        self.pill_ban = theme.pill(header, "封禁 0", "muted")
+        self.pill_ban = theme.pill(
+            header, t("app.pill.bans", count=0), "muted")
         self.pill_ban.pack(side="right", padx=(0, theme.px(6)))
+
+        # Language selector. Switching restarts the tool so every page is
+        # rebuilt with the new catalog.
+        self._languages = i18n.available_languages()
+        self._language_names = list(self._languages.values())
+        lang_combo = ttk.Combobox(
+            header, values=self._language_names, state="readonly",
+            width=12, font=theme.FONT_S,
+        )
+        current = i18n.language_name()
+        if current in self._language_names:
+            lang_combo.current(self._language_names.index(current))
+        lang_combo.pack(side="right", padx=(theme.px(10), theme.px(4)))
+        lang_combo.bind("<<ComboboxSelected>>", self._on_language_change)
+        self._lang_combo = lang_combo
+        tk.Label(header, text=t("common.language"), font=theme.FONT_XS,
+                 fg=theme.FG3, bg=theme.L0).pack(side="right")
 
         # ===== 侧栏 + 内容 =====
         mid = tk.Frame(self, bg=theme.L0)
@@ -340,7 +380,7 @@ class App(tk.Tk):
         for key, grp, title, icon_name, _cls in PAGES:
             if grp != group:
                 group = grp
-                tk.Label(side, text=grp, font=(theme.FAMILY, 7), fg="#5d6b7d",
+                tk.Label(side, text=t(grp), font=(theme.FAMILY, 7), fg="#5d6b7d",
                          bg=theme.L1, anchor="w").pack(fill="x", padx=(theme.px(20), 0),
                                                        pady=(theme.px(14), theme.px(4)))
                 holder = tk.Frame(side, bg=theme.L1)
@@ -352,7 +392,7 @@ class App(tk.Tk):
                 count = "47"
             elif key == "bans":
                 count = "3"
-            item = NavItem(holder, key, icon_name, title, self.show, count)
+            item = NavItem(holder, key, icon_name, t(title), self.show, count)
             item.pack(fill="x", pady=theme.px(1))
             self._nav[key] = item
 
@@ -364,7 +404,7 @@ class App(tk.Tk):
         row.pack(fill="x", padx=theme.px(12), pady=(theme.px(8), theme.px(2)))
         tk.Label(row, text="●", font=(theme.FAMILY, 6), fg=theme.OK,
                  bg=theme.L1).pack(side="left")
-        tk.Label(row, text="数据源已连接", font=theme.FONT_XS, fg=theme.FG2,
+        tk.Label(row, text=t("app.data_connected"), font=theme.FONT_XS, fg=theme.FG2,
                  bg=theme.L1).pack(side="left", padx=(6, 0))
         tk.Label(foot, text=str(self.paths.root), font=(theme.MONO, 7),
                  fg="#5a6779", bg=theme.L1, anchor="w").pack(fill="x", padx=theme.px(12),
@@ -395,18 +435,22 @@ class App(tk.Tk):
         st.grid_propagate(False)
         tk.Frame(st, bg=theme.LINE, height=1).place(relx=0, rely=0, relwidth=1)
 
-        self.st_db = self._status_item(st, "● 数据库已连接", first=True)
-        self.st_items = self._status_item(st, f"道具 {len(self.items):,}")
-        self.st_shop = self._status_item(st, f"商城 {len(self.shop.products)}")
-        self.st_schema = self._status_item(st, f"schema v{self._schema_version()}")
-        self.st_backup = self._status_item(st, "备份 -")
+        self.st_db = self._status_item(st, t("app.db_connected"), first=True)
+        self.st_items = self._status_item(
+            st, t("app.status.items", count=f"{len(self.items):,}"))
+        self.st_shop = self._status_item(
+            st, t("app.status.shop", count=len(self.shop.products)))
+        self.st_schema = self._status_item(
+            st, t("app.status.schema", version=self._schema_version()))
+        self.st_backup = self._status_item(
+            st, t("app.status.backup", time="-"))
 
         tk.Label(st, text="", bg=theme.L1).pack(side="left", fill="x", expand=True)
 
         self.clock_label = tk.Label(st, text="", font=(theme.MONO, 8),
                                     fg=theme.FG3, bg=theme.L1)
         self.clock_label.pack(side="right", padx=(0, theme.px(12)))
-        tk.Label(st, text="F5 刷新 · Ctrl+S 保存", font=theme.FONT_XS,
+        tk.Label(st, text=t("app.shortcuts"), font=theme.FONT_XS,
                  fg="#5d6b7d", bg=theme.L1).pack(side="right", padx=theme.px(14))
 
         self.tab_logs.bind_server(self.server)
@@ -428,12 +472,50 @@ class App(tk.Tk):
         page.tkraise()
         meta = next((p for p in PAGES if p[0] == key), None)
         if meta:
-            self.crumb.configure(text=f"{meta[1]} · {meta[2]}")
+            self.crumb.configure(
+                text=t("app.crumb", group=t(meta[1]), title=t(meta[2])))
         if hasattr(page, "on_show"):
             try:
                 page.on_show()
             except Exception:
                 pass
+
+    def _on_language_change(self, _event=None) -> None:
+        name = self._lang_combo.get()
+        code = next(
+            (c for c, label in self._languages.items() if label == name), "")
+        if not code or code == i18n.get_language():
+            return
+        previous = self.cfg.get("language", i18n.DEFAULT_LANGUAGE)
+        self.cfg["language"] = code
+        try:
+            save_config(self.cfg)
+        except Exception as e:
+            self.cfg["language"] = previous
+            messagebox.showerror(t("common.write_failed"), str(e))
+            current = i18n.language_name()
+            if current in self._language_names:
+                self._lang_combo.current(self._language_names.index(current))
+            return
+        messagebox.showinfo(
+            t("app.language.saved.title"), t("app.language.saved.body"))
+        if not self._restart_app():
+            messagebox.showerror(
+                t("common.error"), t("app.language.restart_failed"))
+
+    def _restart_app(self) -> bool:
+        try:
+            if getattr(sys, "frozen", False):
+                # 打包后 sys.executable 就是本 exe，不能再传 main.py
+                subprocess.Popen([sys.executable], cwd=str(TOOL_DIR))
+            else:
+                main_py = TOOL_DIR / "main.py"
+                subprocess.Popen([sys.executable, str(main_py)],
+                                 cwd=str(TOOL_DIR))
+        except Exception:
+            return False
+        self.destroy()
+        return True
 
     def _schema_version(self) -> str:
         try:
@@ -444,13 +526,13 @@ class App(tk.Tk):
     # ---- 服务端启停（顶栏常驻） ----
     def _start_server(self) -> None:
         if self.server.running:
-            messagebox.showinfo("提示", "服务端已在运行。")
+            messagebox.showinfo(t("common.hint"), t("app.server_already_running"))
             return
         ok, msg = self.server.start(self.paths.root)
         if not ok:
             messagebox.showerror(
-                "启动失败",
-                msg + "\n\n如果是端口占用，请先确认没有另一个服务端实例在运行。",
+                t("app.start_failed"),
+                t("app.start_failed_hint", error=msg),
             )
             return
         self.log_tail.bind_start()
@@ -460,24 +542,28 @@ class App(tk.Tk):
         auth_msg = ""
         if not self.auth.ready:
             aok, amsg = self.auth.start()
-            auth_msg = ("；鉴权：" + amsg) if aok else ("；鉴权启动失败：" + amsg)
-            audit.log("启动鉴权服务（随服务端）", amsg if aok else "失败：" + amsg)
+            auth_msg = (t("app.auth_suffix", message=amsg) if aok
+                        else t("app.auth_fail_suffix", message=amsg))
+            audit.log(
+                t("audit.start_auth_with_server"),
+                amsg if aok else t("audit.failed", message=amsg),
+            )
         self._refresh_auth_pill()
-        audit.log("启动服务端", msg)
+        audit.log(t("audit.start_server"), msg)
         self._refresh_run_state()
 
     def _stop_server(self) -> None:
         if not self.server.running:
-            messagebox.showinfo("提示", "服务端未运行")
+            messagebox.showinfo(t("common.hint"),
+                                t("common.server_not_running"))
             return
         if not messagebox.askyesno(
-            "确认关闭",
-            "将发送 shutdown：先给全服发维护公告，再优雅关闭。\n\n"
-            "若开启了自动重启，本次关闭不会触发重启。\n\n继续？",
+            t("app.stop_confirm.title"),
+            t("app.stop_confirm.body"),
         ):
             return
         ok, msg = self.server.stop()
-        audit.log("关闭服务端", msg)
+        audit.log(t("audit.stop_server"), msg)
         self._started_at = None
         self._refresh_run_state()
 
@@ -502,26 +588,28 @@ class App(tk.Tk):
     def _refresh_run_state(self) -> None:
         running = self.server.running
         if running:
-            self._set_pill(self.pill_run, f"运行中 {self.server.pid}", "ok")
-            if self.btn_start.cget("text") != "重启":
-                self.btn_start.configure(text="重启")
+            self._set_pill(self.pill_run,
+                           t("app.pill.running", pid=self.server.pid), "ok")
+            if self.btn_start.cget("text") != t("app.restart"):
+                self.btn_start.configure(text=t("app.restart"))
                 self.btn_stop.pack(side="right", padx=(0, 6),
                                    before=self.btn_start)
         else:
-            self._set_pill(self.pill_run, "未运行", "danger")
-            if self.btn_start.cget("text") != "启动服务端":
-                self.btn_start.configure(text="启动服务端")
+            self._set_pill(self.pill_run, t("app.pill.not_running"), "danger")
+            if self.btn_start.cget("text") != t("common.start_server"):
+                self.btn_start.configure(text=t("common.start_server"))
                 self.btn_stop.pack_forget()
 
     def _refresh_auth_pill(self) -> None:
         """顶栏鉴权状态：ready 才算可用，仅进程在跑显示启动中。"""
         a = self.auth
         if a.ready:
-            self._set_pill(self.pill_auth, f"鉴权 {a.port}", "ok")
+            self._set_pill(self.pill_auth,
+                           t("app.pill.auth", port=a.port), "ok")
         elif a.running:
-            self._set_pill(self.pill_auth, "鉴权启动中", "warn")
+            self._set_pill(self.pill_auth, t("app.pill.auth_starting"), "warn")
         else:
-            self._set_pill(self.pill_auth, "鉴权未开", "muted")
+            self._set_pill(self.pill_auth, t("app.pill.auth_off"), "muted")
 
     def _set_pill(self, label: tk.Label, text: str, kind: str) -> None:
         fg, fill, bd = theme.PILL_COLORS.get(kind, theme.PILL_COLORS["muted"])
@@ -541,24 +629,29 @@ class App(tk.Tk):
                 self._users_total = len(users)
                 self._banned_count = sum(1 for u in users if u.banned)
                 self._ban_tick = 5
-                self.st_items.configure(text=f"道具 {len(self.items):,}")
+                self.st_items.configure(
+                    text=t("app.status.items", count=f"{len(self.items):,}"))
             self._ban_tick -= 1
             n = self._banned_count
         except Exception:
             n = 0
-        self._set_pill(self.pill_ban, f"封禁 {n}", "danger" if n else "muted")
+        self._set_pill(self.pill_ban, t("app.pill.bans", count=n),
+                       "danger" if n else "muted")
 
     def _refresh_online(self) -> None:
         try:
             count = self.db.online_count()
             self._online = count
             max_p = self.server_config.get("MaxPlayers", 0)
-            text = f"在线 {count}" + (f"/{max_p}" if max_p else "")
+            text = t("app.pill.online", count=count)
+            if max_p:
+                text += f"/{max_p}"
             self._set_pill(self.pill_online, text,
                            "accent" if count else "muted")
         except Exception:
             self._online = -1
-            self._set_pill(self.pill_online, "在线 ?", "muted")
+            self._set_pill(self.pill_online, t("app.pill.online_unknown"),
+                           "muted")
 
     # ---- 供各页调用 ----
     @property
@@ -583,7 +676,8 @@ class App(tk.Tk):
                                   int(self.cfg.get("max_backups", 50)))
             self._last_backup = datetime.now().strftime("%H:%M")
             try:
-                self.st_backup.configure(text=f"备份 {self._last_backup}")
+                self.st_backup.configure(
+                    text=t("app.status.backup", time=self._last_backup))
             except Exception:
                 pass
             return path
@@ -603,16 +697,14 @@ class App(tk.Tk):
     def send_command(self, command: str) -> tuple[bool, str]:
         ok, msg = self.server.send(command)
         if ok:
-            audit.log("控制台命令", command)
+            audit.log(t("audit.console_command"), command)
         return ok, msg
 
     def _on_close(self) -> None:
         if self.server.running:
             ok = messagebox.askyesno(
-                "服务端仍在运行",
-                "关闭工具前是否先向服务端发送 shutdown？\n"
-                "（会先给全服发维护公告再优雅退出）\n\n"
-                "选「否」则只关闭工具，服务端继续运行。",
+                t("app.close.title"),
+                t("app.close.body"),
             )
             if ok:
                 self.server.stop()

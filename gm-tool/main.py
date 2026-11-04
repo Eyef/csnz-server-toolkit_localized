@@ -1,10 +1,10 @@
-"""CSNZ GM 管理工具入口。
+"""CSNZ GM Management Tool Portal.
 
-用法：
-    把 GM_Tool 整个目录放到 CSNZ 服务端根目录（与 CSNZ_Server.exe 同级），
-    双击 启动.bat，或执行 python main.py。
+Usage:
+Place the entire `GM_Tool` directory into the root directory of the CSNZ server (at the same level as `CSNZ_Server.exe`).
+Double-click `Start.bat`, or execute `python main.py`.
 
-若工具放在别处，改 config.json 的 server_root 为服务端绝对路径。
+If the tool is placed elsewhere, update the `server_root` field in `config.json` to the absolute path of the server directory.
 """
 from __future__ import annotations
 
@@ -12,21 +12,26 @@ import sys
 import traceback
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def main() -> int:
     try:
+        from core import i18n
+        from core.paths import load_config
+        i18n.init(load_config().get("language", i18n.DEFAULT_LANGUAGE))
         from ui.app import main as run
         run()
         return 0
     except Exception:
         err = traceback.format_exc()
         try:
+            from core.i18n import t
             from tkinter import messagebox, Tk
             root = Tk()
             root.withdraw()
-            messagebox.showerror("GM 工具启动失败", err)
+            messagebox.showerror(t("main.startup_error"), err)
         except Exception:
             print(err, file=sys.stderr)
         return 1

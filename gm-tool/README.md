@@ -1,293 +1,267 @@
-# CSNZ 服务端管理工具
+# CSNZ Server Management Tool
 
-CSNZ 服务端（Server build 2728，Private Release）的图形化管理后台。
+A graphical administration console for the CSNZ server (server build 2728, private release).
 
-## 启动
+## Starting
 
-把 `GM_Tool` 整个文件夹放到服务端根目录（与 `CSNZ_Server.exe` 同级），然后双击 `启动.bat`。
+Place the whole `gm-tool` folder in the server root (next to `CSNZ_Server.exe`), then double-click `Start.bat`.
 
-工具位置可以在 `config.json` 里改：
+The tool location and language can be changed in `config.json`:
 
 ```json
 {
-  "server_root": "..",      // 相对 GM_Tool 的路径，也可填绝对路径
-  "lang_file": "",          // 留空则自动找 _unpack/resource/cso_chn.txt
-  "auto_backup": true,      // 每次写库前备份
-  "max_backups": 50         // 备份保留个数
+  "server_root": "..",      // path relative to GM_Tool, or an absolute path
+  "language": "en",         // "en" (default), "zh-CN", or any locale JSON file
+  "lang_file": "",          // empty = auto-detect _unpack/resource/cso_chn.txt
+  "auto_backup": true,      // back up before every database write
+  "max_backups": 50         // number of backups to keep
 }
 ```
 
-依赖：Python 3.8+，只用标准库（tkinter / sqlite3 / csv），不需要 pip 安装任何东西。
+Requirements: Python 3.8+, standard library only (tkinter / sqlite3 / csv); no pip packages are needed.
 
-## 界面适配
+## Layout adaptation
 
-所有页面都**不做页面级滚动**，一屏显示全部内容（数据表格本身仍可滚动——1639 件背包
-不可能塞进一屏，这是表格内部滚动，不是页面滚动）。
+All pages **do not scroll at the page level** — everything fits on one screen. Data tables themselves still scroll (1,639 inventory rows cannot fit on one screen; that is table-internal scrolling, not page scrolling).
 
-窗口尺寸按屏幕可用区域自动计算（`ui/layout.py`）：
+The window size is calculated from the usable screen area (`ui/layout.py`):
 
-| 屏幕 | 窗口 | 方式 |
+| Screen | Window | Mode |
 |---|---|---|
-| 1920x1080 | 1789x949 | 居中 |
-| 1366x768 | 1350x720 | 最大化 |
-| 1920x1080 @150% 缩放 | 1264x672 | 最大化 |
-| 2560x1440 | 2391x1280 | 居中 |
+| 1920x1080 | 1789x949 | centered |
+| 1366x768 | 1350x720 | maximized |
+| 1920x1080 @150% scaling | 1264x672 | maximized |
+| 2560x1440 | 2391x1280 | centered |
 
-窗口会**记住上次的位置和尺寸**（存于 `config.json` 的 `window_geometry`）。
-换显示器、改分辨率或缩放后，若上次坐标落在屏幕外或尺寸过小，会自动回退到按当前屏幕重算，
-不会出现窗口「消失」的情况。
+The window **remembers its last position and size** (stored in `window_geometry` in `config.json`). After changing monitors, resolution, or scaling, if the previous coordinates are off-screen or the size is too small, the window falls back to a size computed for the current screen, so it never "disappears".
 
-窗口最小 1180x700。实测 1024x700 ~ 2560x1400 范围内，六个页面均无垂直溢出、
-无控件被裁切。字段采用多栏网格（配置页 4 栏、元数据开关 6 栏），
-表格列宽随窗口伸缩。
+The minimum window size is 1180x700. Tested in the 1024x700 – 2560x1400 range: all six pages fit without vertical overflow or clipped controls. Fields use multi-column grids (4 columns on the configuration page, 6 columns for metadata switches), and table columns stretch with the window.
 
-## 功能
+## Features
 
-| 页 | 能力 |
+| Page | Capabilities |
 |---|---|
-| 服务器配置 | 网络（服务端端口 / 客户端 IP 端口）、启停与自动重启、HostName/欢迎语等 + 34 个 Metadata 开关 | 账号列表与搜索、点券/经验/等级修改、GM 权限开关、背包查看与清空槽位 |
-| 道具发放 | 3743 条道具全量检索（ID/内部名/中文名/别名/分类）、标出用户已持有、批量发放、自定义中文名 |
-| 商城管理 | 商品增删、货币切换、**档位（数量/天数/价格/返点/角标）增删改**、推荐位/热销位、校验与备份、热重载 |
-| 封禁管理 | 账号 / IP / HWID 三通道，一键三封与解封 |
-| 运行与日志 | 启停服务端、控制台命令、实时日志、审计记录 |
-| 安全日志 | 鉴权服务的登录失败/限频/撞库来源，一键封禁或解封 IP |
+| Server configuration | Network (server port / client IP and port), start/stop and automatic restart, HostName/welcome message, plus 34 metadata switches |
+| User management | Account list and search, points/EXP/level editing, GM rights, inventory viewing and slot clearing |
+| Item delivery | Search all 3,743 items (ID / internal name / localized name / alias / category), mark items already owned, batch delivery, custom localized names |
+| Shop management | Add/remove products, currency switching, **add/edit/remove tiers (quantity/days/price/bonus/badge)**, recommended/popular slots, validation and backup, hot reload |
+| Ban management | Three channels: account / IP / HWID; one-click triple ban and unban |
+| Runtime and logs | Start/stop the server, console commands, live logs, audit trail |
+| Security log | Failed logins, rate limiting, and credential-stuffing sources from the authentication service; one-click IP ban/unban |
 
-## 网络：只有一个端口
+## Networking: only one port
 
-**服务端和客户端用的是同一个端口。** 源码 `serverconfig.cpp`：
+**The server and client use the same port.** From the source code `serverconfig.cpp`:
 
 ```cpp
 tcpPort = udpPort = cfg.value("Port", DEFAULT_PORT);
 ```
 
-`ServerConfig.json` 只有一个 `Port`，TCP 与 UDP 共用，两个变量永远被赋同一个值，
-无法分开配置。客户端也必须连同一个端口，否则连不上。所以工具里端口只设一次，
-保存时会同时写进 `ServerConfig.json` 和 `launcher.ini`，保证两边不会不一致。
+`ServerConfig.json` has a single `Port`; TCP and UDP share it, both variables are always assigned the same value, and they cannot be configured separately. The client must connect to the same port, otherwise it cannot connect. The tool therefore asks for the port once and writes it to both `ServerConfig.json` and `launcher.ini`, guaranteeing they stay consistent.
 
-| 项 | 位置 | 能否改 |
+| Item | Location | Editable |
 |---|---|---|
-| 端口 | `ServerConfig.json` 的 `Port` + `launcher.ini` 的 `port` | 能，两边同步 |
-| 监听地址 | 程序内写死 | **否** |
-| 客户端连接 IP | `launcher.ini` 的 `ip` | 能，下拉选本机网卡 |
+| Port | `ServerConfig.json` `Port` + `launcher.ini` `port` | Yes, synchronized |
+| Listen address | Hard-coded in the server | **No** |
+| Client connection IP | `launcher.ini` `ip` | Yes, select a local NIC |
 
-监听地址改不了：`ServerInstance` 调 `getaddrinfo(NULL, port, &hints, &result)`
-且 `hints.ai_flags = AI_PASSIVE`，传 `NULL` 等价于绑定 `0.0.0.0`。
-`ServerConfig.json` 里也没有任何 IP / bind 字段（已核对全部键名）。
+The listen address cannot be changed: `ServerInstance` calls `getaddrinfo(NULL, port, &hints, &result)` with `hints.ai_flags = AI_PASSIVE`; passing `NULL` is equivalent to binding `0.0.0.0`. `ServerConfig.json` has no IP / bind field at all (all keys were checked).
 
-`launcher.ini` 由工具读写，保留原文件的 **UTF-8 BOM 与 CRLF**——启动器按 ANSI 读取，
-丢了 BOM 中文注释会乱码。
+`launcher.ini` is read and written by the tool, preserving the original file's **UTF-8 BOM and CRLF** — the launcher reads it as ANSI, and losing the BOM would corrupt the Chinese comments.
 
-## 进程守护（启动 / 关闭 / 自动重启）
+## Process supervision (start / stop / auto-restart)
 
-配置页提供「▶ 启动服务端」「■ 关闭服务端」「强制结束」三个按钮，外加进程守护。
+The configuration page provides **Start server**, **Stop server**, and **Force kill** buttons, plus process supervision.
 
-**守护规则只有两条**，不需要开关，服务端一旦由工具拉起就自动生效：
+**There are only two supervision rules**, no switch is needed; supervision becomes active as soon as the tool starts the server:
 
-| 情况 | 行为 |
+| Situation | Behavior |
 |---|---|
-| 没点过关闭按钮，服务端掉线（崩溃 / 被外部杀掉 / OOM） | 等待 N 秒后自动拉起 |
-| 通过「关闭服务端」或「强制结束」关掉 | **不再重启** |
+| The server was not stopped with the button and goes down (crash / killed externally / OOM) | Automatically restarted after N seconds |
+| Stopped via **Stop server** or **Force kill** | **Not restarted** |
 
-重启延迟可在界面上调（默认 5 秒）。
+The restart delay is adjustable in the UI (default 5 seconds).
 
-**为什么不用服务端自带的 `RestartOnCrash`？**
-那个开关是真实实现的（`crashdump.cpp`），但它的做法是崩溃时
-`ForceEndServer()` 后用 `ShellExecute` 拉起一个**全新的分离进程**。
-新进程不接本工具的命令管道，工具就管不到它了——表现为「工具显示未运行，
-但端口被占」。实测第二个实例会直接崩在 `bind failed: 10048`。
-所以守护由工具侧看守，新进程始终在管道里，命令照常能发。
+**Why not use the server's built-in `RestartOnCrash`?**
+That switch is really implemented (`crashdump.cpp`), but on a crash it calls `ForceEndServer()` and then launches a **brand-new detached process** with `ShellExecute`. The new process does not connect to this tool's command pipe, so the tool loses control of it — the symptom is "the tool says it is not running, but the port is occupied". In testing, the second instance crashes immediately with `bind failed: 10048`. Supervision is therefore handled by the tool; the new process always stays in the pipe and commands continue to work.
 
-**防崩溃循环**：用「存活时长」判断，而不是「启动成功」。
-服务端活过 30 秒才视为一次正常启动（计数清零，偶发崩溃可继续守护）；
-活不到 30 秒就退出算异常，连续 20 次后停止守护并提示去查 `Logs` 与 `*.mdmp`。
-否则一个「起来 2 秒就崩」的服务端会被无限重拉，把机器拖死。
+**Crash-loop protection**: based on "survival time", not "successful start". The server must stay up for 30 seconds to count as a normal start (the counter is reset, so occasional crashes can still be supervised); if it exits before 30 seconds, that is abnormal, and after 20 consecutive occurrences supervision stops and asks you to check `Logs` and `*.mdmp`. Otherwise a server that "starts and crashes after 2 seconds" would be relaunched forever and drag the machine down.
 
-## 封禁状态判定
+## Ban status detection
 
-用户管理页有独立的「封禁」列，显示类型与剩余时间：
+The user management page has a separate **Ban** column showing the type and time remaining:
 
-| 显示 | 含义 |
+| Display | Meaning |
 |---|---|
-| （空） | 未被封禁 |
-| 封禁·剩7天 | 显示理由封禁，7 天后自动解除 |
-| 静默封·剩2小时 | 静默封禁（客户端看不到理由） |
-| 封禁·永久 | term=0，永久封禁 |
+| (empty) | Not banned |
+| Ban · 7d left | Reason-visible ban, lifted automatically after 7 days |
+| Silent · 2h left | Silent ban (client cannot see the reason) |
+| Ban · permanent | term=0, permanent ban |
 
-过期封禁不算封禁。`UserBan.term` 是到期分钟戳，服务端每分钟执行
-`DELETE FROM UserBan WHERE term <= now`。但如果服务端没在运行，过期行会残留在库里，
-直接按 `type != 0` 判断会把已解封的玩家误显示为封禁中。
+Expired bans do not count as bans. `UserBan.term` is an expiry minute timestamp; the server runs `DELETE FROM UserBan WHERE term <= now` every minute. If the server is not running, expired rows remain in the database, and a naive `type != 0` check would wrongly show already-unbanned players as banned.
 
-所以判定统一放在数据层（`Database._ban_active`），用户管理页与封禁管理页共用同一逻辑。
+The check is therefore centralized in the data layer (`Database._ban_active`); the user management page and the ban management page share the same logic.
 
-顶栏「只看封禁」可筛出所有生效中的封禁账号。
+The top bar's **banned only** filter shows all accounts with an active ban.
 
-## 鉴权服务（登录器依赖）
+## Authentication service (required by the launcher)
 
-管理工具直接托管鉴权服务进程，**不用再单独开 cmd 窗口**。
+The management tool hosts the authentication service process directly, so **there is no need for a separate cmd window**.
 
-在「服务器配置」页的「网络与运行」区：
+On the **Server configuration** page, in the **Network and runtime** section:
 
-| 按钮 | 作用 |
+| Button | Purpose |
 |---|---|
-| 启动鉴权 | 拉起 AuthServer，等端口真正可连才返回 |
-| 停止鉴权 | terminate，超时则 kill，保证不残留占端口的进程 |
-| 端口 + 应用端口 | 修改鉴权端口，自动同步到三个配置文件 |
+| Start auth | Launches AuthServer and returns only when the port is actually reachable |
+| Stop auth | Terminate, kill on timeout, ensuring no process is left holding the port |
+| Port + Apply port | Changes the auth port and synchronizes it to three configuration files |
 
-状态显示区分两种情况（这点很重要）：
+Status display distinguishes two states (this matters):
 
-- **运行中 · 127.0.0.1:38120** —— 端口可连，登录器真的能用
-- **启动中…** —— 进程起来了但端口还没通，uvicorn 初始化需要几百毫秒
+- **Running · 127.0.0.1:38120** — the port is reachable and the launcher really works
+- **Starting…** — the process is up but the port is not reachable yet; uvicorn initialization takes a few hundred milliseconds
 
-只判断「进程活着」是不够的：uvicorn 从启动到能响应有延迟，提前放行会让登录器偶发连不上。
+Checking only "the process is alive" is not enough: uvicorn has a delay between start and being able to respond, and releasing too early makes the launcher fail intermittently.
 
-### 鉴权服务同样被守护
+### The authentication service is supervised too
 
-鉴权服务挂掉意味着**全服玩家都无法登录**，而且比游戏服务端挂掉更隐蔽——
-玩家只会看到「连不上登录服务器」，管理员却以为服务端没事。所以它必须守护。
+If the authentication service goes down, **no player on the server can log in**, and it is more insidious than the game server going down — players only see "cannot connect to the login server", while the administrator may think the game server is fine. It must be supervised.
 
-规则与游戏服务端完全一致：
+The rules are identical to the game server:
 
-| 情况 | 行为 |
+| Situation | Behavior |
 |---|---|
-| 鉴权进程崩溃 / 被杀 / OOM | 等 N 秒后自动拉起 |
-| 点「停止鉴权」 | **不再重启** |
+| Auth process crashes / is killed / OOM | Automatically restarted after N seconds |
+| **Stop auth** clicked | **Not restarted** |
 
-防崩溃循环也一样：活过 30 秒才算一次正常启动（计数清零），
-活不到 30 秒算异常，连续 20 次后停止守护并提示查日志。
+Crash-loop protection is the same: staying up for 30 seconds counts as a normal start (counter reset); exiting before 30 seconds is abnormal, and after 20 consecutive occurrences supervision stops and asks you to check the logs.
 
-状态显示会带「（已守护）」字样，可以确认守护已生效。
+The status display includes "(supervised)" so you can confirm supervision is active.
 
-### 联动启动
+### Linked startup
 
-点「启动服务端」时，若鉴权服务未就绪会**自动一并拉起**。
-这样操作员只按一次，服务端（30002）和鉴权（38120）同时就位，登录器立刻可用。
+When you click **Start server**, the authentication service is **started automatically** if it is not ready. The operator presses the button once; the game server (30002) and authentication (38120) come up together and the launcher is immediately usable.
 
-### 改鉴权端口
+### Changing the auth port
 
-在「服务器配置」页的鉴权行直接填端口，点「应用端口」，工具会自动写三处：
+Enter the port directly in the auth row on the **Server configuration** page and click **Apply port**; the tool writes three files automatically:
 
-| 文件 | 字段 |
+| File | Field |
 |---|---|
 | `AuthServer/config.json` | `listen_port` |
 | `Launcher/config.json` | `auth_base_url` |
 | `GM_Tool/config.json` | `auth_base_url` |
 
-**登录器不需要手动改**——这就是把它做进工具的意义。
+**The launcher does not need manual edits** — that is the point of putting this in the tool.
 
-默认端口是 **38120**（选它是因为不在常见服务号段，也不与系统端口冲突）。
-修改前会做三项检查：
+The default port is **38120** (chosen because it is not in a common service range and does not conflict with system ports). Three checks are performed before changing it:
 
-- 必须是 1-65535 的数字
-- 不能与游戏服务端端口（30002）相同
-- 不能被其他程序占用
+- Must be a number from 1 to 65535
+- Must not equal the game server port (30002)
+- Must not be occupied by another program
 
-若鉴权服务正在运行，会提示需要重启才生效。
+If the authentication service is running, the tool warns that a restart is required for the change to take effect.
 
-云服务器上记得在安全组放行新端口，否则玩家连不上。
+On cloud servers, remember to open the new port in the security group, otherwise players cannot connect.
 
-### 端口来源
+### Port source
 
-管理工具不自己存鉴权端口，而是每次从 `AuthServer/config.json` 的 `listen_port` 读取。
-避免工具和鉴权服务各存一份、改了一处另一处不同步的问题。
+The management tool does not store the auth port itself; it reads `listen_port` from `AuthServer/config.json` every time. This avoids the tool and the auth service each storing a copy and one change not being synchronized.
 
 ---
 
-## 与鉴权服务的联动
+## Integration with the authentication service
 
-「安全日志」页读鉴权服务的 /events 与 /events/ip-summary，形成闭环：
+The **Security log** page reads the auth service's `/events` and `/events/ip-summary`, completing the loop:
 
-    看到某 IP 失败次数异常 -> 双击查看明细 -> 一键封 IP（写 IPBanList）
-                                          或 解除限频（玩家手滑被锁）
+    spot an IP with an abnormal number of failures -> double-click for details -> one-click IP ban (writes IPBanList)
+                                                      or reset the rate limit (player got locked by mistake)
 
-需要在 GM_Tool/config.json 填两项（未配置时该页只提示，不影响其它功能）：
+Two fields must be set in `GM_Tool/config.json` (when unset, the page only shows a hint and other features are unaffected):
 
     {
-      "auth_base_url": "http://你的服务器:8080",
-      "auth_api_key": "与鉴权服务一致的密钥"
+      "auth_base_url": "http://your-server:8080",
+      "auth_api_key": "the same key as the authentication service"
     }
 
-## 在线人数
+## Online player count
 
-主窗口右上角常驻显示「在线 N 人 / 上限」，每秒自动刷新。
+The top-right corner of the main window permanently shows "online N / limit", refreshed every second.
 
-数据源是 `UserSession` 表，而不是 `User.lastLogonTime`：服务端在登录成功时
-`INSERT INTO UserSession`，登出时 `DropSession` 删除，所以该表行数就是当前
-真正在线的会话数，不需要解析日志也不需要重启。
+The data source is the `UserSession` table, not `User.lastLogonTime`: the server `INSERT`s into `UserSession` on successful login and `DropSession` deletes the row on logout, so the row count is the number of sessions that are really online. No log parsing or restart is needed.
 
-**点击人数**可弹出在线明细：UID、账号、昵称、IP、已在线时长。
+**Clicking the count** opens details: UID, account, nickname, IP, and online duration.
 
-注意 `UserSession` 只在玩家真正登录后才有记录；服务端刚启动、无人在线时是 0，
-这是正常的，不代表统计失效。
+Note that `UserSession` only has rows after a player actually logs in; right after the server starts with nobody online it is 0. That is normal and does not mean the statistics are broken.
 
-## 关键设计：离线写库，在线走指令
+## Key design: write the DB offline, use commands online
 
-服务端在内存里持有 `IUser` 对象，任何在线行为（升级、购物、换装）都会用内存值
-`UpdateCharacter` 覆盖数据库。因此：
+The server holds `IUser` objects in memory; any online activity (leveling up, shopping, changing outfits) overwrites the database via `UpdateCharacter` with in-memory values. Therefore:
 
-- **用户离线** → 工具直接写 `UserDatabase.db3`
-- **用户在线** → 工具改为下发 GM 控制台命令（`giveitem` / `givepoints` / `togglegamemaster`），
-  由服务端自己改，避免被覆盖
+- **User offline** → the tool writes `UserDatabase.db3` directly
+- **User online** → the tool sends GM console commands (`giveitem` / `givepoints` / `togglegamemaster`) and lets the server apply them, avoiding overwrites
 
-在线/离线状态取 `UserSession` 表是否存在该 userID。
+Online/offline status is determined by whether the userID exists in `UserSession`.
 
-## 商城档位（子规格）
+## Shop tiers (sub-products)
 
-一个商品下可以有多个档位，例如「1 个/3 天/100 点券」「1 个/10 天/300 点券」「1 个/30 天/800 点券」。
-在「商城管理」页选中商品后，下方表格就是它的档位，可直接编辑：
+A product can have multiple tiers, for example "1 item / 3 days / 100 points", "1 item / 10 days / 300 points", "1 item / 30 days / 800 points". Select a product on the **Shop management** page and the table below shows its tiers; they are directly editable:
 
-| 字段 | 含义 | 有效范围 | 依据 |
+| Field | Meaning | Valid range | Basis |
 |---|---|---|---|
-| 数量 | 一次购买给几个 | 1 ~ 65535 | `WriteUInt16` |
-| 天数 | 有效期，0 = 永久 | 0 ~ 32767 | `WriteInt16` |
-| 价格 | 点券或现金，按商品货币 | 0 ~ 4294967295 | `WriteUInt32` |
-| 返点 | 购买后额外返还的点券 | 0 ~ 4294967295 | `WriteUInt32` |
-| 返公会点 | **服务端不使用** | 0 ~ 4294967295 | 仅解析与回写 |
-| 角标 | 商品角标标记 | 0 ~ 255 | `WriteUInt8` |
+| Count | Items given per purchase | 1 – 65535 | `WriteUInt16` |
+| Days | Duration, 0 = permanent | 0 – 32767 | `WriteInt16` |
+| Price | Points or cash, according to product currency | 0 – 4294967295 | `WriteUInt32` |
+| Bonus | Extra points returned after purchase | 0 – 4294967295 | `WriteUInt32` |
+| Clan bonus | **Not used by the server** | 0 – 4294967295 | Parse/write-back only |
+| Badge | Product badge marker | 0 – 255 | `WriteUInt8` |
 
-超出范围的值服务端会**静默截断**（填 70000 客户端可能显示 4464），因此工具在保存前就拦截。
+Out-of-range values are **silently truncated** by the server (enter 70000 and the client may show 4464), so the tool rejects them before saving.
 
-「返公会点」（`AdditionalClanPoints`）在整个服务端里只出现三处——定义、JSON 解析、JSON 回写，
-既不下发给客户端也不参与 `BuyProduct` 结算，填了没有任何效果。
+The "clan bonus" (`AdditionalClanPoints`) appears only three times in the whole server — definition, JSON parsing, JSON write-back — it is neither sent to the client nor used in `BuyProduct` settlement, so setting it has no effect.
 
-改数量/价格不会改变档位顺序，因此不会引起客户端档位 ID 位移；但**任何保存都必须重新加载**，
-否则玩家仍按旧价格结算。工具会把未重载状态标红提示。
+Changing count/price does not change tier order and therefore does not shift client tier IDs; but **every save must be followed by a reload**, otherwise players still buy at the old price. The tool highlights unsaved/unreloaded state in red.
 
-## 已知服务端缺陷（工具已规避）
+## Known server defects (worked around by the tool)
 
-**`shopreload` 会把商品列表翻倍。** `CommandShopReload` 直接调 `g_ShopManager.Init()`，
-而清空列表的 `Shutdown()` 没有被调用，所以每执行一次就在旧列表后面再追加一遍：
+**`shopreload` doubles the product list.** `CommandShopReload` calls `g_ShopManager.Init()` directly, while the list-clearing `Shutdown()` is not called, so every execution appends the list to the old one:
 
 ```
-初始        47 products
-shopreload  94 products
-shopreload  141 products
-shopreload  188 products
-dbreload    47 products   ← 只有它会先 Shutdown 再 Init
+initial      47 products
+shopreload   94 products
+shopreload   141 products
+shopreload   188 products
+dbreload     47 products   ← only it calls Shutdown before Init
 ```
 
-后果是客户端商城出现重复商品、子规格 ID 错位、玩家可能买到错误的东西。
-**重载商城请用 `dbreload`**，本工具的商城页按钮已改成 dbreload。
+The consequence is duplicate products in the client shop, shifted sub-product IDs, and players possibly buying the wrong thing.
+**Use `dbreload` to reload the shop**; the button on this tool's shop page already uses dbreload.
 
-## 数据规则（复刻自服务端源码，改库时必须遵守）
+## Data rules (reproduced from the server source; must be followed when editing the DB)
 
-1. **时间戳单位是分钟**，不是秒（`GetCurrentTime()` 注释即 `timestamp in minutes`）。
-2. 永久道具：`status=1, inUse=1, expiryDate=0`；限时：`expiryDate = now + 天数 × 1440`。
-3. 可堆叠道具（`Category==9` 且 `UseType∈{0,1,2}`，或 `Category==8` 且 `UseType∈{0,2}`）
-   同 ID 累加 `count`，不新建行。
-4. 新道具优先复用 `itemID=0` 的空槽行；没有空槽才用 `nextInventorySlot` 插入并自增。
-   **不要自己算 max(slot)+1**，会与自增游标冲突。
-5. 清空道具是「把该行写回 `itemID=0` 的空行」，不是 DELETE。
-6. `itemID=166`（密码箱）不占背包槽，累加 `UserCharacter.passwordBoxes`。
-7. 装扮（`Category==12` 或 `ClassName==Tattoo`）入库只是持有，穿上要另写 `UserCostumeLoadout`。
-8. 有效道具数 ≥ `ServerConfig.InventorySlotMax`（默认 4000）视为背包满。
-9. 封禁 `term` 是**到期分钟时间戳**；服务端每分钟 `DELETE FROM UserBan WHERE term <= now`。
+1. **Timestamp unit is minutes, not seconds** (the `GetCurrentTime()` comment says `timestamp in minutes`).
+2. Permanent item: `status=1, inUse=1, expiryDate=0`; timed item: `expiryDate = now + days × 1440`.
+3. Stackable items (`Category==9` and `UseType∈{0,1,2}`, or `Category==8` and `UseType∈{0,2}`) accumulate `count` for the same ID instead of creating a new row.
+4. New items preferentially reuse an empty row with `itemID=0`; only when there is no empty slot use `nextInventorySlot` to insert and increment.
+   **Do not compute `max(slot)+1` yourself** — it conflicts with the auto-increment cursor.
+5. Clearing an item means writing the row back as an empty row with `itemID=0`, not DELETE.
+6. `itemID=166` (password box) does not occupy an inventory slot; it accumulates `UserCharacter.passwordBoxes`.
+7. Costumes (`Category==12` or `ClassName==Tattoo`) are only owned when stored; wearing them requires writing `UserCostumeLoadout`.
+8. A player's inventory is considered full when the number of valid items ≥ `ServerConfig.InventorySlotMax` (default 4000).
+9. A ban's `term` is an **expiry minute timestamp**; the server runs `DELETE FROM UserBan WHERE term <= now` every minute.
 
-## 道具中文名
+## Localized item names
 
-`Item.csv` 的 `Name` 全是英文内部名，中文名在客户端语言包
-`_unpack/resource/cso_chn.txt`（UTF-16LE + BOM，51059 条 token），键名规则 `CSO_<Name>`。
-实测只有约 31% 的道具能命中，且必须过滤掉 `CSO_Equipment="装备"` 这类通用类名词条
-（否则所有武器都会显示成「装备」）。
+The `Name` column in `Item.csv` contains English internal names. Localized names come from the client language pack `_unpack/resource/cso_chn.txt` (UTF-16LE + BOM, 51,059 tokens, key rule `CSO_<Name>`).
+In testing only about 31% of items match, and generic class-name entries such as `CSO_Equipment="Equipment"` must be filtered out (otherwise every weapon would display as "Equipment").
 
-取不到中文名的道具，可在「道具发放」页右侧填自定义中文名，存到工具侧
-`item_aliases.json`，**不改 `Item.csv`**（改它会影响下发给客户端的 metadata）。
+For items without a localized name, you can enter a custom name on the right side of the **Item delivery** page; it is stored in the tool-side `item_aliases.json` and **does not modify `Item.csv`** (modifying it would affect the metadata sent to clients).
+
+## Localization
+
+All UI text and error messages are loaded from JSON locale files:
+
+- `gm-tool/locales/en.json` — English (default)
+- `gm-tool/locales/zh-CN.json` — Simplified Chinese
+
+Choose the language in `config.json` (`"language": "en"` or `"zh-CN"`), or use the language selector in the top bar. The application restarts automatically after switching so every page is rebuilt in the new language. Adding another language is as simple as copying `en.json`, translating the values, naming the file with the language tag (for example `ru.json`, `tr.json`, `fr.json`, `de.json`, `it.json`, `es.json`, `pl.json`, `pt-BR.json`), and setting `_name` to the language's display name.

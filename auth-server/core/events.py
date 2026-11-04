@@ -14,6 +14,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
+from core.i18n import t
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS auth_event (
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,13 +40,22 @@ RATE_BLOCKED = "rate_blocked"
 KICKED = "kicked"
 
 KIND_LABELS = {
-    LOGIN_OK: "登录成功",
-    LOGIN_FAIL: "登录失败",
-    REGISTER_OK: "注册成功",
-    REGISTER_FAIL: "注册失败",
-    RATE_BLOCKED: "触发限频",
-    KICKED: "会话踢出",
+    LOGIN_OK: "event.kind.login_ok",
+    LOGIN_FAIL: "event.kind.login_fail",
+    REGISTER_OK: "event.kind.register_ok",
+    REGISTER_FAIL: "event.kind.register_fail",
+    RATE_BLOCKED: "event.kind.rate_blocked",
+    KICKED: "event.kind.kicked",
 }
+
+
+def kind_label(kind: str) -> str:
+    """Return the localized label for an event kind.
+
+    ``KIND_LABELS`` keeps the kind -> translation key mapping so callers can
+    still import it; use this helper when rendering a label.
+    """
+    return t(KIND_LABELS.get(kind, kind))
 
 
 def now_minutes() -> int:
@@ -135,5 +146,5 @@ class EventStore:
             }
 
 
-__all__ = ["EventStore", "KIND_LABELS", "LOGIN_OK", "LOGIN_FAIL",
+__all__ = ["EventStore", "KIND_LABELS", "kind_label", "LOGIN_OK", "LOGIN_FAIL",
            "REGISTER_OK", "REGISTER_FAIL", "RATE_BLOCKED", "KICKED"]

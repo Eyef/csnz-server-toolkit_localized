@@ -17,6 +17,8 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
+from .i18n import t
+
 SHOP_JSON_VERSION = 1
 
 # 字段取值范围来自 CPacketManager::SendShopUpdate 的实际写入宽度：
@@ -28,17 +30,17 @@ SHOP_JSON_VERSION = 1
 #   adType            UInt8
 # 超出宽度会被静默截断，表现为「填了 70000 结果客户端显示 4464」，必须前置拦截。
 FIELD_LIMITS = {
-    "count": (1, 65535, "数量"),
-    "duration": (0, 32767, "天数（0=永久）"),
-    "price": (0, 4294967295, "价格"),
-    "add_points": (0, 4294967295, "返点"),
-    "add_clan_points": (0, 4294967295, "返公会点"),
-    "ad_type": (0, 255, "角标"),
+    "count": (1, 65535, "shop.field.count"),
+    "duration": (0, 32767, "shop.field.duration"),
+    "price": (0, 4294967295, "shop.field.price"),
+    "add_points": (0, 4294967295, "shop.field.add_points"),
+    "add_clan_points": (0, 4294967295, "shop.field.add_clan_points"),
+    "ad_type": (0, 255, "shop.field.ad_type"),
 }
 
-# 这些字段解析了但服务端从不使用，界面上要标出来
+# These fields are parsed but never used by the server; the UI flags them.
 INERT_FIELDS = {
-    "add_clan_points": "服务端只解析和回写，既不下发给客户端，也不参与购买结算，填了无效",
+    "add_clan_points": "shop.inert.add_clan_points",
 }
 
 
@@ -68,9 +70,10 @@ class SubProduct:
         }
 
     def describe(self) -> str:
-        dur = f"{self.duration} 天" if self.duration else "永久"
-        cur = ""
-        return f"{self.count} 个 / {dur} / {self.price} 点券"
+        dur = (t("common.days_short", n=self.duration) if self.duration
+               else t("shop.describe.permanent"))
+        return t("shop.describe", count=self.count, duration=dur,
+                 price=self.price)
 
 
 class ShopProduct:
@@ -138,7 +141,8 @@ class Shop:
         """先自校验再落盘，并保留备份。返回备份路径（若有）。"""
         problems = self.validate(known_item_ids)
         if problems:
-            raise ValueError("商城配置校验失败：\n" + "\n".join(problems))
+            raise ValueError(t("shop.validation.failed",
+                               problems="\n".join(problems)))
         backup = None
         if backup_dir:
             backup_dir.mkdir(parents=True, exist_ok=True)
@@ -161,39 +165,39 @@ class Shop:
         """
         problems: list[str] = []
         if not self.products:
-            problems.append("商城为空：至少要有 1 个商品，否则客户端商城页会空白")
+            problems.append(t("shop.validation.empty"))
         for pid, prod in self.products.items():
             if pid <= 0:
-                problems.append(f"商品 {pid}：itemID 必须为正整数")
+                problems.append(t("shop.validation.invalid_item", pid=pid))
             elif known_item_ids is not None and pid not in known_item_ids:
-                problems.append(
-                    f"商品 {pid}：Item.csv 里没有这个道具，玩家购买会失败"
-                )
+                problems.append(t("shop.validation.missing_item", pid=pid))
             if not prod.subs:
-                problems.append(f"商品 {pid}：没有子规格，将无法购买")
+                problems.append(t("shop.validation.no_subs", pid=pid))
             if len(prod.subs) > 20:
-                problems.append(f"商品 {pid}：子规格超过 20 个")
+                problems.append(t("shop.validation.too_many_subs", pid=pid))
             for sub in prod.subs:
                 for key in ("count", "duration", "price", "add_points",
                             "add_clan_points", "ad_type"):
                     lo, hi, label = FIELD_LIMITS[key]
                     val = getattr(sub, key)
                     if not (lo <= val <= hi):
-                        problems.append(
-                            f"商品 {pid}/{sub.index}：{label} {val} 超出 "
-                            f"{lo} ~ {hi}，会被服务端截断"
-                        )
+                        problems.append(t(
+                            "shop.validation.range", pid=pid, index=sub.index,
+                            label=t(label), value=val, lo=lo, hi=hi,
+                        ))
                 if len(sub.items) > 1:
-                    problems.append(
-                        f"商品 {pid}/{sub.index}：配了多件道具，服务端只会下发第一件"
-                    )
+                    problems.append(t(
+                        "shop.validation.multi_items",
+                        pid=pid, index=sub.index,
+                    ))
         for page, ids in self.recommended.items():
             for iid in ids:
                 if iid not in self.products:
-                    problems.append(f"推荐位页 {page}：itemID {iid} 不在商品列表里")
+                    problems.append(t("shop.validation.recommended",
+                                      page=page, iid=iid))
         for iid in self.popular:
             if iid not in self.products:
-                problems.append(f"热销位：itemID {iid} 不在商品列表里")
+                problems.append(t("shop.validation.popular", iid=iid))
         return problems
 
     # ---- 编辑 ----
@@ -237,10 +241,12 @@ class Shop:
             try:
                 val = int(raw)
             except (TypeError, ValueError):
-                raise ValueError(f"{FIELD_LIMITS.get(key, (0, 0, key))[2]} 必须是整数")
+                label = FIELD_LIMITS.get(key, (0, 0, key))[2]
+                raise ValueError(t("shop.error.not_integer", label=t(label)))
             lo, hi, label = FIELD_LIMITS.get(key, (0, 4294967295, key))
             if not (lo <= val <= hi):
-                raise ValueError(f"{label} 必须在 {lo} ~ {hi} 之间（当前 {val}）")
+                raise ValueError(t("shop.error.range", label=t(label),
+                                   lo=lo, hi=hi, value=val))
             setattr(sub, key, val)
         self.dirty = True
         return True
@@ -261,7 +267,8 @@ class Shop:
                          ("add_clan_points", add_clan_points), ("ad_type", ad_type)):
             lo, hi, label = FIELD_LIMITS[key]
             if not (lo <= int(val) <= hi):
-                raise ValueError(f"{label} 必须在 {lo} ~ {hi} 之间（当前 {val}）")
+                raise ValueError(t("shop.error.range", label=t(label),
+                                   lo=lo, hi=hi, value=val))
         next_idx = (max((s.index for s in prod.subs), default=-1) + 1)
         sub = SubProduct(next_idx, {
             "Count": count, "Duration": duration, "Price": price,

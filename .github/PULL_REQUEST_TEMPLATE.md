@@ -1,16 +1,16 @@
-## 改动说明
-<!-- 做了什么，为什么这么做 -->
+## Summary
+<!-- What changed and why -->
 
-## 改动类型
-- [ ] Bug 修复
-- [ ] 新功能
-- [ ] 重构
-- [ ] 文档
+## Change Type
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Refactor
+- [ ] Documentation
 
-## 验证方式
-- [ ] `python -m compileall` 通过
-- [ ] 涉及数据库的改动已在副本上测试
-- [ ] 新增规则已注明服务端源码依据
+## Verification
+- [ ] `python -m compileall` passes
+- [ ] Database changes were tested on a copy
+- [ ] New rules cite the server source
 
-## 截图
-<!-- 界面改动请附截图 -->
+## Screenshots
+<!-- Attach screenshots for UI changes -->

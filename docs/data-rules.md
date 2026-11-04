@@ -1,10 +1,10 @@
-# 数据规则
+# Data Rules
 
-以下规则全部**逐条复刻自服务端源码**，改库时违反任何一条都可能造成数据错乱。
+Every rule below is **copied from the server source code**. Violating any of them while editing the database can corrupt data.
 
-## 时间戳
+## Timestamps
 
-**单位是分钟，不是秒。**
+**The unit is minutes, not seconds.**
 
 ```cpp
 time_t CServerInstance::GetCurrentTime() {
@@ -12,80 +12,78 @@ time_t CServerInstance::GetCurrentTime() {
 }
 ```
 
-`29876183` 对应 2026-10-21 08:23 UTC。一天 = 1440。
+`29876183` corresponds to 2026-10-21 08:23 UTC. One day = 1440.
 
-## 道具发放
+## Item Delivery
 
-复刻 `CItemManager::AddItem` 与 `CUserDatabaseSQLite::AddInventoryItem`：
+Copied from `CItemManager::AddItem` and `CUserDatabaseSQLite::AddInventoryItem`:
 
-| 规则 | 说明 |
+| Rule | Description |
 |---|---|
-| 永久道具 | `status=1, inUse=1, expiryDate=0` |
-| 限时道具 | `expiryDate = now + 天数 × 1440` |
-| 可堆叠判定 | `Category==9` 且 `UseType∈{0,1,2}`，或 `Category==8` 且 `UseType∈{0,2}` |
-| 可堆叠处理 | 同 itemID 累加 `count`，不新建行 |
-| 槽位分配 | 优先复用 `itemID=0` 的空槽行；没有才用 `nextInventorySlot` 并自增 |
-| 清空道具 | 写回 `itemID=0` 的空行，**不是 DELETE** |
-| 密码箱（166） | 不占槽位，累加 `UserCharacter.passwordBoxes` |
-| 背包上限 | 有效道具数 ≥ `InventorySlotMax`（默认 4000）视为满 |
+| Permanent item | `status=1, inUse=1, expiryDate=0` |
+| Timed item | `expiryDate = now + days × 1440` |
+| Stackability | `Category==9` and `UseType∈{0,1,2}`, or `Category==8` and `UseType∈{0,2}` |
+| Stackable handling | Add to `count` for the same itemID; do not create a new row |
+| Slot allocation | Reuse an empty row with `itemID=0` first; otherwise use `nextInventorySlot` and increment it |
+| Clearing an item | Write back an empty row with `itemID=0`; **do not DELETE** |
+| Password box (166) | Does not occupy a slot; adds to `UserCharacter.passwordBoxes` |
+| Inventory limit | A valid item count ≥ `InventorySlotMax` (default 4000) means full |
 
-> **绝不要自己算 `max(slot)+1`**，会与 `nextInventorySlot` 自增游标冲突。
+> **Never compute `max(slot)+1` yourself** — it conflicts with the `nextInventorySlot` cursor.
 
-## 装扮
+## Costumes
 
-`Category==12` 或 `ClassName=="Tattoo"` 的道具，入库只是**持有**，
-穿上要另外写 `UserCostumeLoadout`（或 `UserZBCostumeLoadout`）。
+Items with `Category==12` or `ClassName=="Tattoo"` are only **owned** when added to the inventory.
+Wearing them requires writing `UserCostumeLoadout` (or `UserZBCostumeLoadout`) separately.
 
-## 账号注册
+## Account Registration
 
-`RegisterUser` 的校验：
+Validation in `RegisterUser`:
 
-- 账号：5-15 位，仅英文字母 + 数字
-- 密码：5-15 位，不能是纯数字
+- Username: 5–15 characters, Latin letters + digits only
+- Password: 5–15 characters, cannot be all digits
 
-`Register` 只写 `User` 表，**不建角色**。这是刻意的——
-服务端 `LoginUser` 有分支：
+`Register` writes only the `User` table and **does not create a character**. This is intentional — the server's `LoginUser` has a branch:
 
 ```cpp
 if (!newUser->IsCharacterExists())
-    g_PacketManager.SendCharacter(socket);   // 弹建角
+    g_PacketManager.SendCharacter(socket);   // show character creation
 else
-    SendLoginPacket(newUser, character);     // 直接进大厅
+    SendLoginPacket(newUser, character);     // go straight to the lobby
 ```
 
-新账号首次进游戏会弹建角界面（一次），之后直接进大厅。
+A new account sees the character creation screen once on first login, then goes straight to the lobby.
 
-`userID` 取自 `UserDist.userIDNext` 自增，不能用 `MAX(userID)+1`。
+`userID` comes from the `UserDist.userIDNext` counter; do not use `MAX(userID)+1`.
 
-## 封禁
+## Bans
 
-| 通道 | 表 | 粒度 |
+| Channel | Table | Granularity |
 |---|---|---|
-| 账号 | `UserBan` | `term` 为到期分钟戳 |
-| IP | `IPBanList` | 只有 ip 一列，**永久** |
-| HWID | `HWIDBanList` | 只有 hwid 一列，**永久** |
+| Account | `UserBan` | `term` is the expiry timestamp in minutes |
+| IP | `IPBanList` | Only an ip column; **permanent** |
+| HWID | `HWIDBanList` | Only an hwid column; **permanent** |
 
-`UserBan.term=0` 表示永久。服务端每分钟执行：
+`UserBan.term=0` means permanent. The server runs every minute:
 
 ```sql
 DELETE FROM UserBan WHERE term <= now
 ```
 
-**判定封禁要看 `term` 是否过期**，不能只看 `type != 0`——
-服务端没运行时过期行会残留在库里，会导致误判。
+**Check whether `term` has expired when evaluating a ban**, not just `type != 0` — while the server is not running, expired rows remain in the database and can cause false positives.
 
-## 在线状态
+## Online Status
 
-以 `UserSession` 表为准：登录时 `INSERT`，登出时 `DropSession` 删除。
-该表行数即当前在线会话数。
+`UserSession` is authoritative: a row is `INSERT`ed on login and removed by `DropSession` on logout.
+The row count is the current number of online sessions.
 
-## 商城
+## Shop
 
-| 规则 | 说明 |
+| Rule | Description |
 |---|---|
-| `Version` | 必须为 `1`，否则 `dbreload` 会让服务端关闭 |
-| 子规格 ID | 加载时按 JSON 顺序自增分配，改完必须重载 |
-| 一件道具 | 一个子规格只能卖一件道具，礼包走 `ItemRewards` |
-| 字段宽度 | `duration` Int16 / `count` UInt16 / `price` UInt32 / `adType` UInt8 |
+| `Version` | Must be `1`, otherwise `dbreload` shuts the server down |
+| Tier IDs | Assigned sequentially by JSON order at load time; reload after changes |
+| One item per tier | A tier can sell only one item; use `ItemRewards` for bundles |
+| Field widths | `duration` Int16 / `count` UInt16 / `price` UInt32 / `adType` UInt8 |
 
-超宽会被**静默截断**（填 70000 客户端显示 4464），工具已拦截。
+Out-of-range values are **silently truncated** (70000 displays as 4464 on the client); the tool blocks them.

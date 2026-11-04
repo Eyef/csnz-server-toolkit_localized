@@ -10,47 +10,72 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-# 字段 -> (中文名, 类型, 范围/说明[, 可选值])
+from .i18n import t
+
+# 字段 -> (标签 locale key, 类型, 说明 locale key[, 可选值])
 # 第 4 项存在时，界面渲染为下拉框而不是输入框。
 # 只有取值是「有限枚举」的字段才该有第 4 项——让用户手填数字是设计缺陷。
 EDITABLE = {
-    "HostName": ("服务器名", str, "显示在房间列表"),
-    "Port": ("服务端监听端口", str, "TCP/UDP 端口，改动需重启服务端"),
-    "MaxPlayers": ("最大在线", int, "1 - 1000"),
-    "WelcomeMessage": ("登录欢迎语", str, "登录后弹窗显示"),
-    "InventorySlotMax": ("背包槽上限", int, "32 - 100000，服务端默认 4000"),
-    "MaxRegistrationsPerIP": ("每 IP 注册数", int, "0 - 100"),
-    "BanListMaxSize": ("个人黑名单上限", int, "每用户可屏蔽的名字数"),
+    "HostName": ("cfg.field.HostName.label", str, "cfg.field.HostName.note"),
+    "Port": ("cfg.field.Port.label", str, "cfg.field.Port.note"),
+    "MaxPlayers": ("cfg.field.MaxPlayers.label", int, "cfg.field.MaxPlayers.note"),
+    "WelcomeMessage": ("cfg.field.WelcomeMessage.label", str,
+                       "cfg.field.WelcomeMessage.note"),
+    "InventorySlotMax": ("cfg.field.InventorySlotMax.label", int,
+                         "cfg.field.InventorySlotMax.note"),
+    "MaxRegistrationsPerIP": ("cfg.field.MaxRegistrationsPerIP.label", int,
+                             "cfg.field.MaxRegistrationsPerIP.note"),
+    "BanListMaxSize": ("cfg.field.BanListMaxSize.label", int,
+                       "cfg.field.BanListMaxSize.note"),
     # 取值来自客户端主菜单皮肤事件，源码只判断 > 0 后原样下发给客户端
-    "MainMenuSkinEvent": ("主菜单皮肤", int, "选择主菜单显示的主题活动皮肤", {
-        0: "无（默认）",
-        5: "圣诞",
-        6: "万圣节",
-        7: "万圣节 + 雪",
-        8: "复活节兔子",
+    "MainMenuSkinEvent": ("cfg.field.MainMenuSkinEvent.label", int,
+                          "cfg.field.MainMenuSkinEvent.note", {
+        0: "cfg.skin.0",
+        5: "cfg.skin.5",
+        6: "cfg.skin.6",
+        7: "cfg.skin.7",
+        8: "cfg.skin.8",
     }),
-    "CheckClientBuild": ("校验客户端版本", bool, "开启后需配 AllowedClientTimestamp"),
-    "AllowedClientTimestamp": ("允许客户端时间戳", int, "需 CheckClientBuild = true"),
-    "AllowedLauncherVersion": ("允许启动器版本", int, "当前 67"),
-    "SSL": ("启用 SSL", bool, "需要 Data/Certs 证书"),
-    "Crypt": ("启用 Crypt", bool, "EVP 加密"),
-    "RestartOnCrash": ("崩溃自动重启", bool, ""),
+    "CheckClientBuild": ("cfg.field.CheckClientBuild.label", bool,
+                         "cfg.field.CheckClientBuild.note"),
+    "AllowedClientTimestamp": ("cfg.field.AllowedClientTimestamp.label", int,
+                               "cfg.field.AllowedClientTimestamp.note"),
+    "AllowedLauncherVersion": ("cfg.field.AllowedLauncherVersion.label", int,
+                               "cfg.field.AllowedLauncherVersion.note"),
+    "SSL": ("cfg.field.SSL.label", bool, "cfg.field.SSL.note"),
+    "Crypt": ("cfg.field.Crypt.label", bool, "cfg.field.Crypt.note"),
+    "RestartOnCrash": ("cfg.field.RestartOnCrash.label", bool,
+                       "cfg.field.RestartOnCrash.note"),
 }
 
 METADATA_LABELS = {
-    "Maplist": "地图表", "ClientTable": "客户端表", "Item": "道具主表",
-    "ItemBox": "补给箱", "MatchOption": "房间选项", "ZombieWarWeaponList": "生化武器表",
-    "WeaponParts": "武器部件", "GameModeList": "模式列表", "ProgressUnlock": "解锁进度",
-    "WeaponPaints": "武器涂装", "ReinforceMaxLvl": "强化等级上限",
-    "ReinforceMaxEXP": "强化经验上限", "ReinforceItemsExp": "强化材料经验",
-    "ItemExpireTime": "道具过期表", "ScenarioTX_Common": "剧情文本(通用)",
-    "ScenarioTX_Dedi": "剧情文本(专用)", "ShopItemList_Dedi": "专用服商品表",
-    "ZBCompetitive": "生化竞技", "PPSystem": "PP 系统", "CodisData": "超凡武器",
-    "WeaponProp": "武器属性", "RandomWeaponList": "随机武器", "ModeEvent": "模式事件",
-    "HonorMoneyShop": "荣誉商城", "MileageShop": "里程商城", "EventShop": "活动商城",
-    "FamilyTotalWarMap": "家族战地图", "FamilyTotalWar": "家族战",
-    "WeaponAscend": "武器升华", "PerkParam": "技能参数", "Synthesis": "合成",
-    "VoxelList": "体素列表", "VoxelItem": "体素道具", "VoxelConfigList": "体素配置",
+    "Maplist": "cfg.meta.Maplist", "ClientTable": "cfg.meta.ClientTable",
+    "Item": "cfg.meta.Item", "ItemBox": "cfg.meta.ItemBox",
+    "MatchOption": "cfg.meta.MatchOption",
+    "ZombieWarWeaponList": "cfg.meta.ZombieWarWeaponList",
+    "WeaponParts": "cfg.meta.WeaponParts",
+    "GameModeList": "cfg.meta.GameModeList",
+    "ProgressUnlock": "cfg.meta.ProgressUnlock",
+    "WeaponPaints": "cfg.meta.WeaponPaints",
+    "ReinforceMaxLvl": "cfg.meta.ReinforceMaxLvl",
+    "ReinforceMaxEXP": "cfg.meta.ReinforceMaxEXP",
+    "ReinforceItemsExp": "cfg.meta.ReinforceItemsExp",
+    "ItemExpireTime": "cfg.meta.ItemExpireTime",
+    "ScenarioTX_Common": "cfg.meta.ScenarioTX_Common",
+    "ScenarioTX_Dedi": "cfg.meta.ScenarioTX_Dedi",
+    "ShopItemList_Dedi": "cfg.meta.ShopItemList_Dedi",
+    "ZBCompetitive": "cfg.meta.ZBCompetitive", "PPSystem": "cfg.meta.PPSystem",
+    "CodisData": "cfg.meta.CodisData", "WeaponProp": "cfg.meta.WeaponProp",
+    "RandomWeaponList": "cfg.meta.RandomWeaponList",
+    "ModeEvent": "cfg.meta.ModeEvent",
+    "HonorMoneyShop": "cfg.meta.HonorMoneyShop",
+    "MileageShop": "cfg.meta.MileageShop", "EventShop": "cfg.meta.EventShop",
+    "FamilyTotalWarMap": "cfg.meta.FamilyTotalWarMap",
+    "FamilyTotalWar": "cfg.meta.FamilyTotalWar",
+    "WeaponAscend": "cfg.meta.WeaponAscend", "PerkParam": "cfg.meta.PerkParam",
+    "Synthesis": "cfg.meta.Synthesis", "VoxelList": "cfg.meta.VoxelList",
+    "VoxelItem": "cfg.meta.VoxelItem",
+    "VoxelConfigList": "cfg.meta.VoxelConfigList",
 }
 
 
@@ -83,32 +108,33 @@ class ServerConfig:
         problems: list[str] = []
         port = str(self.data.get("Port", ""))
         if not port.isdigit() or not (1 <= int(port) <= 65535):
-            problems.append(f"Port 非法：{port!r}，必须是 1-65535 的数字字符串")
+            problems.append(t("cfg.validation.port", value=repr(port)))
         mp = self.data.get("MaxPlayers", 0)
         if not isinstance(mp, int) or not (1 <= mp <= 1000):
-            problems.append(f"MaxPlayers 非法：{mp!r}，必须在 1-1000")
+            problems.append(t("cfg.validation.maxplayers", value=repr(mp)))
         slot = self.data.get("InventorySlotMax", 0)
         if not isinstance(slot, int) or slot < 32:
-            problems.append(f"InventorySlotMax 非法：{slot!r}，至少 32")
+            problems.append(t("cfg.validation.slots", value=repr(slot)))
         if self.data.get("CheckClientBuild"):
             ts = self.data.get("AllowedClientTimestamp", 0)
             if not isinstance(ts, int):
-                problems.append("CheckClientBuild 开启时 AllowedClientTimestamp 必须是整数")
+                problems.append(t("cfg.validation.timestamp"))
         skin = self.data.get("MainMenuSkinEvent", 0)
         choices = EDITABLE["MainMenuSkinEvent"][3]
         if skin not in choices:
             problems.append(
-                f"MainMenuSkinEvent 必须是 {'/'.join(str(k) for k in choices)} "
-                f"之一（当前 {skin}）"
+                t("cfg.validation.skin",
+                  choices="/".join(str(k) for k in choices), value=skin)
             )
         if not isinstance(self.data.get("Metadata"), dict):
-            problems.append("缺少 Metadata 段，客户端将收不到任何表")
+            problems.append(t("cfg.validation.metadata"))
         return problems
 
     def save(self, backup_dir: Path | None = None) -> Path | None:
         problems = self.validate()
         if problems:
-            raise ValueError("服务端配置校验失败：\n" + "\n".join(problems))
+            raise ValueError(t("cfg.validation.failed",
+                               problems="\n".join(problems)))
         backup = None
         if backup_dir:
             backup_dir.mkdir(parents=True, exist_ok=True)

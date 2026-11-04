@@ -2,154 +2,212 @@
 
 # CSNZ Server Toolkit
 
-**Counter-Strike Online / Nexon Zombies 私服服务端管理工具**
+**Server management tools for Counter-Strike Online / Nexon Zombies private servers**
 
-服务端管理 · 账号鉴权，两个组件协同工作
+Server management · account authentication — two components working together
 
 [![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Platform](https://img.shields.io/badge/Platform-Windows-0078D4?logo=windows&logoColor=white)](#)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CSNZ Build](https://img.shields.io/badge/CSNZ%20Build-2728-blueviolet)](#)
+[![Languages](https://img.shields.io/badge/Languages-EN%20%7C%20ZH-blue)](#-localization)
 
-[功能](#-功能) · [快速开始](#-快速开始) · [架构](#-架构) · [文档](#-文档) · [已知问题](#-已知问题)
+[Features](#-features) · [Quick start](#-quick-start) · [Architecture](#-architecture) · [Documentation](#-documentation) · [Known issues](#-known-issues)
 
 </div>
 
 ---
 
-## 这是什么
+## What is this?
 
-针对 **CSNZ（CSO/Nexon Zombies）服务端 Build 2728** 的一套管理工具，解决三个实际运维痛点：
+A management toolkit for the **CSNZ (CSO / Nexon Zombies) server build 2728** that solves three practical administration problems:
 
-- **改配置要翻十个 JSON/CSV 文件，编码还各不相同** → 图形化编辑，自动校验、自动备份
-- **发道具、改点券只能敲控制台命令，还得自己查 itemID** → 3743 条道具全文检索，一键发放
-- **玩家账号安全没法管控** → 独立鉴权服务，限频防爆破、自动封禁撞库 IP
+- **Changing configuration means editing ten JSON/CSV files with different encodings** → graphical editing with automatic validation and backups
+- **Sending items or changing points requires console commands and looking up item IDs manually** → full-text search across 3,743 items with one-click delivery
+- **No way to manage player account security** → a dedicated authentication service with rate limiting and automatic brute-force IP bans
 
-所有写入规则均**逐条复刻服务端源码**，不是猜测的字段含义。
+Every write rule is **reproduced from the server source code line by line** — these are not guessed field meanings.
 
-## ✨ 功能
+## ✨ Features
 
-### 🖥️ 服务端管理工具 (`gm-tool/`)
+### 🖥️ Server management tool (`gm-tool/`)
 
-| 模块 | 能力 |
+| Module | Capabilities |
 |---|---|
-| **总览** | 服务端状态、在线人数、封禁计数、实时日志 |
-| **用户管理** | 账号列表与搜索、封禁状态（含剩余天数）、点券/经验/等级修改、GM 权限、背包查看 |
-| **道具发放** | 3743 条道具全文检索（ID/内部名/中文名/分类）、标出已持有、批量发放 |
-| **商城管理** | 商品增删、档位（数量/天数/价格/返点）增删改、推荐位、热销位 |
-| **服务器配置** | 端口、欢迎语、34 项 Metadata 开关、鉴权端口、服务启停 |
-| **封禁管理** | 账号 / IP / HWID 三通道，一键三封 |
-| **运行与日志** | 启停服务端、控制台命令、实时日志、审计记录 |
-| **安全日志** | 登录失败/限频/撞库来源，一键封禁或解封 |
+| **Overview** | Server state, online player count, ban counters, live log |
+| **User management** | Account list and search, ban status (including time remaining), points/EXP/level editing, GM rights, inventory viewer |
+| **Item delivery** | Full-text search across 3,743 items (ID / internal name / localized name / category), marks items already owned, batch delivery |
+| **Shop management** | Add/remove products, add/edit/remove tiers (quantity/days/price/bonus), recommended and popular slots |
+| **Server configuration** | Port, welcome message, 34 metadata switches, authentication port, start/stop |
+| **Ban management** | Account / IP / HWID channels with one-click triple ban |
+| **Runtime and logs** | Start/stop the server, console commands, live logs, audit trail |
+| **Security log** | Failed logins, rate limiting, credential-stuffing sources; one-click ban/unban |
 
-### 🔐 鉴权服务 (`auth-server/`)
+### 🔐 Authentication service (`auth-server/`)
 
-- 账号注册 / 登录校验 / 会话踢出
-- **限频防爆破**：IP 与账号双维度独立计数，成功即清零
-- **自动封禁**：累计失败超阈值自动拉黑 IP
-- 事件审计：登录记录、撞库来源分析
+- Account registration / login verification / session kick
+- **Brute-force rate limiting**: independent counters per IP and per account, cleared on success
+- **Automatic banning**: IPs are blacklisted automatically after too many failures
+- Event audit: login records and credential-stuffing source analysis
 
-## 🚀 快速开始
+## 🚀 Quick start
 
-### 环境要求
+### Requirements
 
 - Windows 10/11
-- Python 3.8+（**无需 pip 安装任何依赖**，仅用标准库）
-- 一份 CSNZ 服务端（Build 2728）
+- Python 3.8+ (**no pip packages required** — standard library only)
+- A CSNZ server (build 2728)
 
-> 鉴权服务需要 `fastapi` 与 `uvicorn`，见 [auth-server/requirements.txt](auth-server/requirements.txt)
+> The authentication service needs `fastapi` and `uvicorn`; see [auth-server/requirements.txt](auth-server/requirements.txt).
 
-### 部署
+### Deployment
 
 ```bash
-git clone https://github.com/fengzhenhong/csnz-server-toolkit.git
-cd csnz-server-toolkit
+git clone https://github.com/Eyef/csnz-server-toolkit_lozalized.git
+cd csnz-server-toolkit_lozalized
 ```
 
-把三个目录放进 CSNZ 服务端根目录（与 `CSNZ_Server.exe` 同级）：
+Place the three directories in the CSNZ server root (next to `CSNZ_Server.exe`):
 
 ```
-CSNZ服务端/
+CSNZ_server/
 ├── CSNZ_Server.exe
 ├── UserDatabase.db3
 ├── ServerConfig.json
 ├── Data/
-├── gm-tool/          ← 管理工具
-└── auth-server/      ← 鉴权服务
+├── gm-tool/          ← management tool
+└── auth-server/      ← authentication service
 ```
 
-### 启动
+### Start
 
-1. 双击 `gm-tool/启动.bat`
-2. 在「服务器配置」页点 **启动服务端**
-3. 服务端（30002）与鉴权服务（38120）同时就位
-4. 玩家用客户端登录器连接 `http://你的地址:38120` 完成账号验证
+1. Double-click `gm-tool/Start.bat`
+2. On the **Server configuration** page, click **Start server**
+3. The game server (30002) and the authentication service (38120) start together
+4. Players connect their client launcher to `http://your-address:38120` to verify their account
 
-> 首次使用请先修改三处配置的 `api_key` 为同一长随机串，
-> 详见 [部署文档](docs/deployment.md)
+> Before first use, change the `api_key` in all three configuration files to the same long random string.
+> See [deployment docs](docs/deployment.md).
 
-## 🏗️ 架构
+## 📦 Building a standalone exe
+
+Both programs can be packaged with PyInstaller. The result matches the upstream
+release (`CSNZ.GMTool.exe` only); the optional auth server exe removes the
+Python requirement for the authentication service as well.
+
+```powershell
+python -m pip install -r requirements-build.txt
+powershell -ExecutionPolicy Bypass -File build.ps1                      # GM tool only
+powershell -ExecutionPolicy Bypass -File build.ps1 -WithAuthServer      # + auth server
+```
+
+Or double-click `build.bat` (add `-WithAuthServer` for both). The script runs
+`scripts/selftest.py`, bundles the locale catalogs inside each executable, and
+produces:
+
+| File | Purpose |
+|---|---|
+| `dist/CSNZ.GMTool.exe` | Onefile, windowed; no Python needed on the target PC |
+| `dist/config.json` | Template with `"server_root": "."` |
+| `dist/AuthServer/CSNZ.AuthServer.exe` | Optional, `-WithAuthServer`; console onefile |
+| `dist/AuthServer/config.json` | Auth service template (`server_root: ".."`) |
+| `dist/SHA256.txt` | Checksums of the built executables |
+
+Deploy by copying `CSNZ.GMTool.exe` and `config.json` into the CSNZ server root
+(next to `CSNZ_Server.exe`). The exe reads and writes `config.json`, `logs/`,
+`backups/`, and `item_aliases.json` next to itself; locale files are embedded,
+so the language selector keeps working. If you place the exe in a subfolder,
+set `server_root` accordingly.
+
+If you built the auth server, copy the whole `AuthServer` folder next to
+`CSNZ_Server.exe` as well. The GM tool finds it under either `AuthServer/` or
+`auth-server/`, starts `CSNZ.AuthServer.exe` when present (no `server.py` or
+Python installation required), and otherwise falls back to `python server.py`.
+`-WithAuthServer` needs `fastapi` and `uvicorn`, installed automatically from
+[auth-server/requirements.txt](auth-server/requirements.txt) unless `-NoInstall`
+is passed.
+
+## 🌐 Localization
+
+The interface and all messages are localized. Language strings live in JSON files:
+
+| Path | Contents |
+|---|---|
+| `gm-tool/locales/*.json` | Management tool UI, messages, and errors |
+| `auth-server/locales/*.json` | Authentication service API messages |
+
+English is the default language; Simplified Chinese is included. The language can be changed in `config.json`:
+
+```json
+{
+  "language": "en"
+}
+```
+
+or from the language selector in the management tool's top bar (the tool restarts to apply the change). The repository is ready for additional locales: copy `en.json` to `<language-tag>.json`, translate the values, and set `_name` to the language's display name — the file then appears in the selector.
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────────┐
-│  玩家客户端登录器             玩家电脑        │
-│  注册 / 登录（调用下方接口）                 │
+│  Player client launcher      Player PC      │
+│  Register / login (calls the APIs below)    │
 └──────────────────┬──────────────────────────┘
-                   │ HTTPS + API Key
+                   │ HTTPS + API key
 ┌──────────────────▼──────────────────────────┐
-│  鉴权服务 (auth-server)      云服务器        │
+│  Authentication service       Cloud server  │
 │  /register /login /kick /events             │
 └──────────────────┬──────────────────────────┘
-                   │ 同机读 SQLite
+                   │ reads SQLite on the same host
 ┌──────────────────▼──────────────────────────┐
-│  CSNZ 服务端 + UserDatabase.db3             │
+│  CSNZ server + UserDatabase.db3             │
 │  ▲                                          │
-│  │ stdin 管道 / 进程守护                     │
+│  │ stdin pipe / process supervision         │
 │  ┌──────────────────────────────────┐       │
-│  │  管理工具 (gm-tool)              │       │
+│  │  Management tool (gm-tool)       │       │
 │  └──────────────────────────────────┘       │
 └─────────────────────────────────────────────┘
 ```
 
-**为什么需要鉴权服务？** 三个硬性事实决定了它不可省略：
+**Why is the authentication service necessary?** Three hard facts make it unavoidable:
 
-1. `UserDatabase.db3` 是本地 SQLite 文件，玩家电脑上不该有
-2. 服务端 `LoginUser()` 要求已建立的游戏 socket，外部无法替玩家登录
-3. 服务端没有任何 HTTP / RPC 接口
+1. `UserDatabase.db3` is a local SQLite file that should not exist on player PCs.
+2. The server's `LoginUser()` requires an established game socket; an external process cannot log in on behalf of a player.
+3. The server exposes no HTTP / RPC management interface.
 
-## 📚 文档
+## 📚 Documentation
 
-| 文档 | 内容 |
+| Document | Contents |
 |---|---|
-| [部署指南](docs/deployment.md) | 云服务器部署、端口、HTTPS、安全组 |
-| [数据规则](docs/data-rules.md) | 时间戳单位、道具堆叠、槽位分配等服务端规则 |
-| [已知问题](docs/known-issues.md) | 服务端缺陷与规避方案 |
+| [Deployment guide](docs/deployment.md) | Cloud deployment, ports, HTTPS, security groups |
+| [Data rules](docs/data-rules.md) | Timestamp units, item stacking, slot allocation, and other server rules |
+| [Known issues](docs/known-issues.md) | Server defects and workarounds |
 
-## ⚠️ 已知问题
+## ⚠️ Known issues
 
-以下是**服务端自身缺陷**，工具已做规避：
+The following are **defects in the server itself**; the toolkit works around them:
 
-| 问题 | 影响 | 规避 |
+| Issue | Impact | Workaround |
 |---|---|---|
-| `shopreload` 不清空旧列表 | 商品数翻倍（47→94→141→188） | 改用 `dbreload` |
-| 密码明文存储 | 无法改哈希，否则游戏登录失效 | 必须开 HTTPS |
-| `IPBanList` 无过期字段 | 自动封禁只能永久 | 阈值设保守，提供手动解封 |
-| 监听地址写死 `0.0.0.0` | 无法绑定指定网卡 | 只能改端口 |
+| `shopreload` does not clear the old list | Product count doubles (47→94→141→188) | Use `dbreload` instead |
+| Passwords stored in plain text | Cannot hash them or game login breaks | HTTPS is mandatory |
+| `IPBanList` has no expiry field | Automatic bans can only be permanent | Use a conservative threshold and unban manually |
+| Listen address hard-coded to `0.0.0.0` | Cannot bind to a specific NIC | Only the port can be changed |
 
-详见 [known-issues.md](docs/known-issues.md)
+See [known-issues.md](docs/known-issues.md) for details.
 
-## 🤝 贡献
+## 🤝 Contributing
 
-欢迎 Issue 与 PR。提交前请确保：
+Issues and pull requests are welcome. Before submitting, please ensure that:
 
-- 新增的配置写入规则有源码依据（附文件与行号）
-- 涉及数据库写操作的改动在副本上测试，不碰真实存档
+- New configuration write rules are backed by the server source code (include file and line number)
+- Database write changes are tested on a copy, never on a real save
 
 ## 📄 License
 
 [MIT](LICENSE)
 
-## 免责声明
+## Disclaimer
 
-本项目仅供**私服架设与学习研究**使用，与服务端开发方无关联。
-请勿用于商业用途或侵犯他人权益。
+This project is intended **only for private-server hosting and study/research**. It is not affiliated with the server's developers.
+Do not use it for commercial purposes or to infringe on the rights of others.
