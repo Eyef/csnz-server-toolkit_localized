@@ -146,6 +146,14 @@ English is the default language; Simplified Chinese is included. The language ca
 
 or from the language selector in the management tool's top bar (the tool restarts to apply the change). The repository is ready for additional locales: copy `en.json` to `<language-tag>.json`, translate the values, and set `_name` to the language's display name — the file then appears in the selector.
 
+After editing catalogs, validate them before committing:
+
+```bash
+python scripts/check_locales.py
+```
+
+It verifies key sets, `{placeholder}` names, duplicate keys, empty translations, and `_name` uniqueness against `en.json`; CI runs the same check. Use the exact file stem in `config.json` (`ru`, not `ru-RU`) — only `pt` → `pt-BR` is aliased.
+
 ## 🏗️ Architecture
 
 ```

@@ -24,6 +24,9 @@ jobs:
       - name: Syntax check
         run: python -m compileall -q gm-tool auth-server
 
+      - name: Check locale catalogs
+        run: python scripts/check_locales.py
+
       - name: Install auth-service dependencies
         run: pip install -r auth-server/requirements.txt
 

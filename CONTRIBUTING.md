@@ -9,7 +9,7 @@
 pip install -r auth-server/requirements.txt
 ```
 
-The management tool and launcher use **only the standard library** and need no extra dependencies.
+The management tool uses **only the standard library** and needs no extra dependencies.
 
 ## Code Style
 
@@ -22,10 +22,31 @@ The management tool and launcher use **only the standard library** and need no e
 ### 1. Compile check
 
 ```bash
-python -m compileall gm-tool auth-server launcher
+python -m compileall gm-tool auth-server scripts
 ```
 
-### 2. Data safety
+### 2. Locale catalogs
+
+Every user-facing string lives in `gm-tool/locales/*.json` or `auth-server/locales/*.json`. After changing a catalog, or when adding a language, run:
+
+```bash
+python scripts/check_locales.py
+```
+
+The script compares each file with `en.json` in the same folder and reports:
+
+- invalid JSON, a non-object root, or non-string values
+- duplicate keys
+- missing or extra keys relative to `en.json`
+- mismatched `{placeholder}` names
+- an empty translation where the English reference is not empty (and the reverse)
+- a missing, empty, or duplicated `_name`
+
+To add a language, copy `en.json` to `<language-tag>.json`, translate only the values, and set `_name` to the language's own name (for example `"Русский"`). Keep the file stem exactly as it should appear in `config.json` (`ru`, not `ru-RU`); only `pt` → `pt-BR` is aliased currently. The management tool picks the file up automatically and shows it in the language selector; the auth service uses the `language` setting in its config file. Both require a restart.
+
+CI runs the same check, so a broken catalog cannot reach `main`.
+
+### 3. Data safety
 
 Changes that write to the database **must be tested on a copy**:
 
@@ -38,7 +59,7 @@ shutil.copy2("UserDatabase.db3", tmp / "UserDatabase.db3")
 
 Never modify the real save data directly.
 
-### 3. Rule provenance
+### 4. Rule provenance
 
 New configuration-writing rules must cite the server source, for example:
 
