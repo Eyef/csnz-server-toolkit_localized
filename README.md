@@ -63,8 +63,8 @@ Every write rule is **reproduced from the server source code line by line** — 
 ### Deployment
 
 ```bash
-git clone https://github.com/Eyef/csnz-server-toolkit_lozalized.git
-cd csnz-server-toolkit_lozalized
+git clone https://github.com/Eyef/csnz-server-toolkit_localized.git
+cd csnz-server-toolkit_localized
 ```
 
 Place the three directories in the CSNZ server root (next to `CSNZ_Server.exe`):
